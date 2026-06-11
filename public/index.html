@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WheatField — Drone Simulation Platform</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0f08;--bg2:#0f1a0c;--bg3:#141f10;--card:#182214;--card2:#1e2a18;
+  --green:#4a8c2a;--green2:#6ab840;--green3:#8fd460;
+  --gold:#c8940a;--gold2:#f0b820;
+  --blue:#2a7abf;--blue2:#40a0e0;
+  --red:#c83030;--amber:#c88020;--cyan:#20a090;
+  --txt:#c8e8a0;--muted:#5a8040;--border:#243818;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'Space Grotesk',sans-serif;
+}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:13px;min-height:100vh;overflow-x:hidden}
+
+/* NAV */
+nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.nav-logo{width:32px;height:32px;background:var(--card2);border:1px solid var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.nav-title{font-size:15px;font-weight:700;letter-spacing:3px;color:var(--gold2)}
+.nav-sub{font-size:9px;color:var(--muted);letter-spacing:3px;margin-top:1px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.nav-badge{font-size:9px;padding:3px 9px;border-radius:10px;border:1px solid;letter-spacing:1px}
+.nb-green{background:rgba(74,140,42,.15);color:var(--green3);border-color:var(--green)}
+.nb-gold{background:rgba(200,148,10,.15);color:var(--gold2);border-color:var(--gold)}
+.nb-blue{background:rgba(42,122,191,.15);color:var(--blue2);border-color:var(--blue)}
+.pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green3);animation:pulse 2s infinite;margin-right:4px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#clock{font-family:var(--mono);font-size:10px;color:var(--muted)}
+
+/* PROXY BAR */
+.proxy-bar{background:var(--card);border-bottom:1px solid var(--border);padding:7px 20px;display:flex;align-items:center;gap:10px;font-size:10px}
+.proxy-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:.3s;flex-shrink:0}
+.proxy-dot.on{background:var(--green3);box-shadow:0 0 0 2px rgba(143,212,96,.2)}
+.proxy-dot.off{background:var(--red);box-shadow:0 0 0 2px rgba(200,48,48,.2)}
+.proxy-url{font-family:var(--mono);color:var(--muted)}
+#proxyMsg{margin-left:auto;color:var(--muted)}
+
+/* MAIN GRID */
+.main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 20px;max-width:1100px;margin:0 auto}
+.full{grid-column:1/-1}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;position:relative}
+.card::before{content:'';position:absolute;top:0;left:16px;right:16px;height:1px;background:linear-gradient(90deg,transparent,var(--green),transparent);opacity:.3}
+.card-title{font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.card-title svg{flex-shrink:0;opacity:.7}
+
+/* MAP */
+.field-map{background:var(--bg3);border:1px solid var(--border);border-radius:7px;position:relative;overflow:hidden;height:180px}
+.coord-pill{position:absolute;bottom:7px;left:7px;background:rgba(10,15,8,.9);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-family:var(--mono);font-size:8px;color:var(--green3);letter-spacing:1px}
+.drone{position:absolute;width:14px;height:14px;transform:translate(-50%,-50%);cursor:pointer;transition:left .6s,top .6s}
+.scan-ring{position:absolute;border-radius:50%;border:1px solid var(--gold2);opacity:0;pointer-events:none;transform:translate(-50%,-50%);animation:scanr 3s ease-out infinite}
+@keyframes scanr{0%{width:0;height:0;opacity:.6}100%{width:70px;height:70px;opacity:0}}
+
+/* SENSORS */
+.sensor-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.sensor-box{background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:10px}
+.s-label{font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:4px;font-weight:600}
+.s-value{font-size:20px;font-weight:600;letter-spacing:.5px}
+.s-bar{height:3px;background:var(--border);border-radius:2px;margin-top:7px;overflow:hidden}
+.s-fill{height:100%;border-radius:2px;transition:width .9s}
+
+/* UPLOAD */
+.upload-zone{border:1px dashed var(--border);border-radius:7px;padding:14px;text-align:center;cursor:pointer;transition:.25s;background:var(--bg3)}
+.upload-zone:hover{border-color:var(--green);background:rgba(74,140,42,.05)}
+.upload-zone.drag{border-color:var(--gold2);background:rgba(200,148,10,.05)}
+#prev-img{width:100%;height:80px;object-fit:cover;border-radius:5px;display:none}
+
+/* CONTEXT PREVIEW */
+.ctx-pre{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px 11px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.85;margin-top:9px;display:none;max-height:120px;overflow-y:auto}
+.ctx-pre::-webkit-scrollbar{width:2px}
+.ctx-pre::-webkit-scrollbar-thumb{background:var(--border)}
+.ck{color:var(--blue2)}.cv{color:var(--green3)}.cc{color:var(--border)}
+
+/* BUTTONS */
+.btn-launch{width:100%;padding:10px;border:1px solid var(--green);border-radius:7px;background:rgba(74,140,42,.12);color:var(--green3);font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:1px;cursor:pointer;transition:.25s;margin-top:9px;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-launch:hover{background:rgba(74,140,42,.25)}
+.btn-launch:disabled{opacity:.3;cursor:not-allowed}
+
+/* BAND SECTION */
+.band-header{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.band-icon{width:30px;height:30px;background:rgba(42,122,191,.2);border:1px solid var(--blue);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.band-title{font-size:13px;font-weight:600;color:var(--txt)}
+.band-sub{font-size:9px;color:var(--muted);margin-top:1px}
+.band-badge{margin-left:auto;font-size:9px;padding:3px 9px;border-radius:8px;background:var(--card2);color:var(--muted);border:1px solid var(--border);transition:.3s;white-space:nowrap}
+.band-badge.live{background:rgba(74,140,42,.15);color:var(--green3);border-color:var(--green)}
+.band-badge.err{background:rgba(200,48,48,.15);color:var(--red);border-color:var(--red)}
+
+/* PIPELINE */
+.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.agent-box{border:1px solid var(--border);border-radius:8px;padding:11px;background:var(--bg3);transition:.3s}
+.agent-box.active{border-color:var(--blue);background:rgba(42,122,191,.08)}
+.agent-box.proc{border-color:var(--amber);background:rgba(200,128,32,.08)}
+.agent-box.done{border-color:var(--cyan);background:rgba(32,160,144,.08)}
+.agent-box.err{border-color:var(--red);background:rgba(200,48,48,.08)}
+.agent-num{font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:5px;font-weight:600}
+.agent-name{font-size:11px;font-weight:600;color:var(--txt);margin-bottom:2px}
+.agent-ar{font-size:9px;color:var(--muted);margin-bottom:7px}
+.agent-status{font-size:9px;color:var(--muted);line-height:1.5;min-height:26px}
+.agent-tag{font-size:8px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);color:var(--muted);background:var(--card);display:inline-block;margin-top:5px;letter-spacing:1px}
+.agent-tag.run{background:rgba(42,122,191,.15);color:var(--blue2);border-color:var(--blue)}
+.agent-tag.proc{background:rgba(200,128,32,.15);color:var(--amber);border-color:var(--amber)}
+.agent-tag.done{background:rgba(32,160,144,.15);color:var(--cyan);border-color:var(--cyan)}
+.agent-tag.err{background:rgba(200,48,48,.15);color:var(--red);border-color:var(--red)}
+
+/* CHANNELS */
+.channels{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.channel{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px;transition:.3s}
+.channel.live{border-color:var(--blue);background:rgba(42,122,191,.07)}
+.channel.done{border-color:var(--cyan);background:rgba(32,160,144,.07)}
+.channel.err{border-color:var(--red)}
+.ch-name{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:5px;display:flex;align-items:center;gap:5px}
+.ch-dot{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0;transition:.3s}
+.ch-dot.on{background:var(--green3);box-shadow:0 0 0 2px rgba(143,212,96,.2)}
+.ch-dot.tx{background:var(--amber);box-shadow:0 0 0 2px rgba(200,128,32,.2)}
+.ch-msg{font-size:9px;color:var(--muted);line-height:1.6;font-family:var(--mono)}
+
+/* RESULT */
+.report-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
+.report-block{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px}
+.rb-title{font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:6px;font-weight:600;text-transform:uppercase}
+.rb-val{font-size:10px;color:var(--txt);line-height:1.5}
+.raw-box{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.8;margin-top:10px;max-height:140px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.raw-box::-webkit-scrollbar{width:2px}
+.raw-box::-webkit-scrollbar-thumb{background:var(--border)}
+
+/* LOG */
+.log-box{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px 11px;max-height:110px;overflow-y:auto;font-family:var(--mono);font-size:9px;line-height:1.9}
+.log-box::-webkit-scrollbar{width:2px}
+.log-box::-webkit-scrollbar-thumb{background:var(--border)}
+.log-entry{display:flex;gap:8px}
+.log-time{color:var(--green3);flex-shrink:0}
+.log-msg{color:var(--muted)}
+.log-msg.band{color:var(--blue2)}
+.log-msg.ok{color:var(--cyan)}
+.log-msg.hi{color:var(--amber)}
+.log-msg.er{color:var(--red)}
+
+/* STATUS BADGE */
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:6px;font-size:10px;font-weight:600;margin-bottom:8px;border:1px solid}
+.sb-healthy{background:rgba(32,160,144,.15);color:var(--cyan);border-color:var(--cyan)}
+.sb-warning{background:rgba(200,128,32,.15);color:var(--amber);border-color:var(--amber)}
+.sb-danger{background:rgba(200,48,48,.15);color:var(--red);border-color:var(--red)}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">🌾</div>
+  <div>
+    <div class="nav-title">WHEATFIELD</div>
+    <div class="nav-sub">DRONE SIMULATION PLATFORM</div>
+  </div>
+  <div class="nav-right">
+    <span class="nav-badge nb-green"><span class="pulse"></span>DRONE LIVE</span>
+    <span class="nav-badge nb-gold">BAND AGENTS</span>
+    <span class="nav-badge nb-blue">WHEATGUARD</span>
+    <span id="clock">--:--:--</span>
+  </div>
+</nav>
+
+<div class="proxy-bar">
+  <div class="proxy-dot" id="proxyDot"></div>
+  <span style="color:var(--txt);font-weight:500">Proxy</span>
+  <span class="proxy-url">/proxy → band.ai/api/v1/agents/run</span>
+  <span id="proxyMsg">checking…</span>
+</div>
+
+<div class="main">
+
+  <!-- MAP + SENSORS -->
+  <div class="card">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="3,6 9,3 15,6 21,3 21,18 15,21 9,18 3,21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+      FIELD MAP · خريطة الحقل
+    </div>
+    <div class="field-map" id="mapArea">
+      <svg width="100%" height="100%" viewBox="0 0 320 180" xmlns="http://www.w3.org/2000/svg">
+        <rect width="320" height="180" fill="#0a0f08"/>
+        <g opacity=".22">
+          <rect x="8" y="8" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="20" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="32" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="44" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="56" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="68" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="80" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="92" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="104" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="116" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="128" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="140" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="152" width="304" height="6" rx="2" fill="#4a8c2a"/>
+          <rect x="8" y="164" width="304" height="6" rx="2" fill="#4a8c2a"/>
+        </g>
+        <ellipse cx="230" cy="125" rx="42" ry="26" fill="#c88020" opacity=".15"/>
+        <text x="230" y="128" text-anchor="middle" font-size="8" fill="#f0b820" font-family="monospace" opacity=".9">ZONE-D</text>
+        <rect x="6" y="6" width="308" height="168" rx="4" fill="none" stroke="#4a8c2a" stroke-width=".8" opacity=".35"/>
+        <path d="M36 32 L108 32 L108 88 L180 88 L180 44 L268 44 L268 140 L52 140 L52 160" fill="none" stroke="#c8940a" stroke-width="1" stroke-dasharray="5 3" opacity=".45"/>
+        <circle cx="36" cy="32" r="3" fill="#40a0e0" opacity=".8"/>
+        <circle cx="180" cy="88" r="3" fill="#40a0e0" opacity=".8"/>
+        <circle cx="268" cy="140" r="3" fill="#c83030" opacity=".85"/>
+      </svg>
+      <div class="drone" id="drone" style="left:34%;top:25%" onclick="moveDrone()">
+        <svg viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="7" cy="7" r="6" fill="rgba(10,15,8,.92)" stroke="#c8940a" stroke-width="1.1"/>
+          <circle cx="7" cy="7" r="2.4" fill="#f0b820"/>
+          <line x1="7" y1="1.2" x2="7" y2="4.4" stroke="#f0b820" stroke-width=".9"/>
+          <line x1="7" y1="9.6" x2="7" y2="12.8" stroke="#f0b820" stroke-width=".9"/>
+          <line x1="1.2" y1="7" x2="4.4" y2="7" stroke="#f0b820" stroke-width=".9"/>
+          <line x1="9.6" y1="7" x2="12.8" y2="7" stroke="#f0b820" stroke-width=".9"/>
+        </svg>
+      </div>
+      <div class="scan-ring" id="scanRing" style="left:34%;top:25%"></div>
+      <div class="coord-pill" id="coordPill">35.6841°N · 0.6324°W · 25m</div>
+    </div>
+    <div class="sensor-grid">
+      <div class="sensor-box">
+        <div class="s-label">TEMPERATURE · الحرارة</div>
+        <div class="s-value" id="sTemp" style="color:#c88030">28.4°C</div>
+        <div class="s-bar"><div class="s-fill" id="bTemp" style="width:57%;background:#c88030"></div></div>
+      </div>
+      <div class="sensor-box">
+        <div class="s-label">HUMIDITY · الرطوبة</div>
+        <div class="s-value" id="sHum" style="color:#40a0e0">62%</div>
+        <div class="s-bar"><div class="s-fill" id="bHum" style="width:62%;background:#40a0e0"></div></div>
+      </div>
+      <div class="sensor-box">
+        <div class="s-label">ALTITUDE · الارتفاع</div>
+        <div class="s-value" id="sAlt" style="color:#6ab840">25m</div>
+        <div class="s-bar"><div class="s-fill" id="bAlt" style="width:50%;background:#4a8c2a"></div></div>
+      </div>
+      <div class="sensor-box">
+        <div class="s-label">COVERAGE · التغطية</div>
+        <div class="s-value" id="sCov" style="color:#f0b820">43%</div>
+        <div class="s-bar"><div class="s-fill" id="bCov" style="width:43%;background:#c8940a"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAPTURE + LOG -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div class="card">
+      <div class="card-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        AI SCANNER · التقاط صورة
+      </div>
+      <div class="upload-zone" id="uploadZone"
+           onclick="document.getElementById('fileInput').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="onDrop(event)">
+        <img id="prev-img" alt="wheat preview">
+        <div id="uploadPlaceholder">
+          <div style="font-size:22px;margin-bottom:5px">📱</div>
+          <div style="font-size:10px;color:var(--muted)">Click to upload wheat photo</div>
+          <div style="font-size:9px;color:var(--border);margin-top:2px">يحاكي زر AI SCANNER في تطبيق WheatGuard</div>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="onFile(this.files[0])">
+
+      <div class="ctx-pre" id="ctxPre">
+<span class="cc">// Structured context → Band agents</span>
+{
+  <span class="ck">"source"</span>: <span class="cv">"WheatField-Drone"</span>,
+  <span class="ck">"telemetry"</span>: {
+    <span class="ck">"temperature"</span>: <span class="cv" id="cTemp">—</span>,
+    <span class="ck">"humidity"</span>: <span class="cv" id="cHum">—</span>,
+    <span class="ck">"gps"</span>: <span class="cv" id="cGps">—</span>,
+    <span class="ck">"altitude"</span>: <span class="cv" id="cAlt">—</span>,
+    <span class="ck">"zone"</span>: <span class="cv" id="cZone">—</span>
+  },
+  <span class="ck">"local_ai_insight"</span>: {
+    <span class="ck">"model"</span>: <span class="cv">"YOLOv8-wheat"</span>,
+    <span class="ck">"confidence"</span>: <span class="cv" id="cYolo">—</span>,
+    <span class="ck">"detections"</span>: <span class="cv" id="cDet">—</span>
+  },
+  <span class="ck">"system_goal"</span>: <span class="cv">"تشخيص أمراض القمح"</span>
+}</div>
+
+      <button class="btn-launch" id="launchBtn" onclick="launch()" disabled>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22,2 15,22 11,13 2,9"/></svg>
+        Send to Band · إرسال عبر Band API
+      </button>
+    </div>
+
+    <div class="card" style="flex:1">
+      <div class="card-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        SYSTEM LOG
+      </div>
+      <div class="log-box" id="logBox">
+        <div class="log-entry"><span class="log-time" id="lt0">--:--</span><span class="log-msg">WheatField online. Band proxy ready.</span></div>
+        <div class="log-entry"><span class="log-time" id="lt1">--:--</span><span class="log-msg">GPS lock. YOLOv8 model loaded.</span></div>
+        <div class="log-entry"><span class="log-time" id="lt2">--:--</span><span class="log-msg hi">Zone-D anomaly flagged — NE sector.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BAND PIPELINE -->
+  <div class="card full">
+    <div class="band-header">
+      <div class="band-icon">📡</div>
+      <div>
+        <div class="band-title">Band Collaboration Layer</div>
+        <div class="band-sub">@biomoleculaire7/wheatsheild-diagnostic-a · Agent-4 Router → Agent-5 Analyzer → Agent-6 Reporter</div>
+      </div>
+      <div class="band-badge" id="bandBadge">standby</div>
+    </div>
+
+    <div class="pipeline">
+      <div class="agent-box" id="a0">
+        <div class="agent-num">SENDER</div>
+        <div class="agent-name">🛸 WheatField</div>
+        <div class="agent-ar">منصة الدرون</div>
+        <div class="agent-status" id="a0s">Multipart POST: image + structured context JSON</div>
+        <span class="agent-tag" id="a0t">standby</span>
+      </div>
+      <div class="agent-box" id="a1">
+        <div class="agent-num">AGENT 04</div>
+        <div class="agent-name">⑆ Router</div>
+        <div class="agent-ar">وكيل التوجيه</div>
+        <div class="agent-status" id="a1s">Receives context, routes to Analyzer → agent4_output</div>
+        <span class="agent-tag" id="a1t">waiting</span>
+      </div>
+      <div class="agent-box" id="a2">
+        <div class="agent-num">AGENT 05</div>
+        <div class="agent-name">🧠 Analyzer</div>
+        <div class="agent-ar">وكيل التحليل</div>
+        <div class="agent-status" id="a2s">Fuses YOLO + telemetry, deep analysis → agent5_output</div>
+        <span class="agent-tag" id="a2t">waiting</span>
+      </div>
+      <div class="agent-box" id="a3">
+        <div class="agent-num">AGENT 06</div>
+        <div class="agent-name">📄 Reporter</div>
+        <div class="agent-ar">وكيل التقرير</div>
+        <div class="agent-status" id="a3s">Builds final report → agent6_output → WheatGuard</div>
+        <span class="agent-tag" id="a3t">waiting</span>
+      </div>
+    </div>
+
+    <div class="channels">
+      <div class="channel" id="ch1">
+        <div class="ch-name"><div class="ch-dot" id="d1"></div>band://drone-context</div>
+        <div class="ch-msg" id="m1">Sender → Router<br>Rich structured context</div>
+      </div>
+      <div class="channel" id="ch2">
+        <div class="ch-name"><div class="ch-dot" id="d2"></div>band://task-delegate</div>
+        <div class="ch-msg" id="m2">Router → Analyzer<br>agent4_output + task</div>
+      </div>
+      <div class="channel" id="ch3">
+        <div class="ch-name"><div class="ch-dot" id="d3"></div>band://analysis-result</div>
+        <div class="ch-msg" id="m3">Analyzer → Reporter<br>agent5_output → agent6_output</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="card full">
+    <div class="card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/></svg>
+      WHEATGUARD RESULT · مخرجات BandAgentService
+    </div>
+    <div id="resArea" style="display:flex;align-items:center;justify-content:center;min-height:70px;color:var(--muted);font-size:10px;flex-direction:column;gap:5px;text-align:center">
+      <div style="font-size:22px">🌾</div>
+      <div>Upload wheat image and press Send to get real Band API response</div>
+      <div style="font-size:9px;color:var(--border)">ارفع صورة قمح واضغط إرسال للحصول على رد Band الحقيقي</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ← يشير للـ proxy على نفس الـ domain في Vercel
+const PROXY = '/proxy';
+
+let s = { temp: 28.4, hum: 62, alt: 25, cov: 43 };
+let imgFile = null, lat = 35.6841, lon = 0.6324;
+
+// Clock
+function tick() {
+  document.getElementById('clock').textContent = new Date().toTimeString().slice(0, 8);
+  ['lt0','lt1','lt2'].forEach((id, i) => {
+    document.getElementById(id).textContent = new Date(Date.now() - (i+1)*180000).toTimeString().slice(0,5);
+  });
+}
+setInterval(tick, 1000); tick();
+
+// Proxy health
+async function checkProxy() {
+  try {
+    const r = await fetch('/health');
+    if (r.ok) {
+      document.getElementById('proxyDot').className = 'proxy-dot on';
+      document.getElementById('proxyMsg').textContent = '✓ proxy online';
+      document.getElementById('proxyMsg').style.color = 'var(--green3)';
+    }
+  } catch {
+    document.getElementById('proxyDot').className = 'proxy-dot off';
+    document.getElementById('proxyMsg').textContent = '✗ proxy offline';
+    document.getElementById('proxyMsg').style.color = 'var(--red)';
+  }
+}
+checkProxy(); setInterval(checkProxy, 15000);
+
+// Sensors live
+function updateSensors() {
+  s.temp += (Math.random() - .5) * .5; s.temp = Math.max(20, Math.min(38, s.temp));
+  s.hum  += (Math.random() - .5) * .7; s.hum  = Math.max(30, Math.min(90, s.hum));
+  document.getElementById('sTemp').textContent = s.temp.toFixed(1) + '°C';
+  document.getElementById('bTemp').style.width = (s.temp / 40 * 100) + '%';
+  document.getElementById('sHum').textContent  = Math.round(s.hum) + '%';
+  document.getElementById('bHum').style.width  = s.hum + '%';
+}
+setInterval(updateSensors, 2500);
+
+// Drone movement
+function moveDrone() {
+  lat = 35.68 + (Math.random() - .5) * .02;
+  lon = 0.63  + (Math.random() - .5) * .02;
+  const x = 18 + Math.random() * 62, y = 12 + Math.random() * 66;
+  s.alt = Math.round(15 + Math.random() * 30);
+  s.cov = Math.min(99, s.cov + Math.round(1 + Math.random() * 3));
+  document.getElementById('drone').style.left   = x + '%';
+  document.getElementById('drone').style.top    = y + '%';
+  document.getElementById('scanRing').style.left = x + '%';
+  document.getElementById('scanRing').style.top  = y + '%';
+  document.getElementById('coordPill').textContent = lat.toFixed(4) + '°N · ' + lon.toFixed(4) + '°W · ' + s.alt + 'm';
+  document.getElementById('sAlt').textContent = s.alt + 'm';
+  document.getElementById('bAlt').style.width = (s.alt / 60 * 100) + '%';
+  document.getElementById('sCov').textContent = s.cov + '%';
+  document.getElementById('bCov').style.width = s.cov + '%';
+  addLog('Drone → ' + lat.toFixed(4) + '°N / ' + lon.toFixed(4) + '°W');
+  if (imgFile) refreshCtx();
+}
+setInterval(() => { if (Math.random() > .65) moveDrone(); }, 7000);
+
+function addLog(msg, cls = '') {
+  const box = document.getElementById('logBox');
+  const el  = document.createElement('div'); el.className = 'log-entry';
+  const t   = new Date().toTimeString().slice(0, 5);
+  el.innerHTML = `<span class="log-time">${t}</span><span class="log-msg ${cls}">${msg}</span>`;
+  box.insertBefore(el, box.firstChild);
+  if (box.children.length > 22) box.removeChild(box.lastChild);
+}
+
+function onDrop(e) { e.preventDefault(); document.getElementById('uploadZone').classList.remove('drag'); if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]); }
+
+function onFile(f) {
+  if (!f) return; imgFile = f;
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('prev-img').src = e.target.result;
+    document.getElementById('prev-img').style.display = 'block';
+    document.getElementById('uploadPlaceholder').style.display = 'none';
+    document.getElementById('launchBtn').disabled = false;
+    refreshCtx();
+    addLog('Image loaded: ' + f.name, 'ok');
+  };
+  r.readAsDataURL(f);
+}
+
+function refreshCtx() {
+  document.getElementById('ctxPre').style.display = 'block';
+  const yconf = (72 + Math.random() * 20).toFixed(1);
+  const det   = ['leaf_rust','stem_rust','powdery_mildew','healthy'][Math.floor(Math.random() * 4)];
+  document.getElementById('cTemp').textContent = s.temp.toFixed(1);
+  document.getElementById('cHum').textContent  = Math.round(s.hum);
+  document.getElementById('cGps').textContent  = lat.toFixed(4) + '°N,' + lon.toFixed(4) + '°W';
+  document.getElementById('cAlt').textContent  = s.alt + 'm';
+  document.getElementById('cZone').textContent = s.cov > 60 ? 'ZONE-D' : 'ZONE-N';
+  document.getElementById('cYolo').textContent = yconf + '%';
+  document.getElementById('cDet').textContent  = '"' + det + '"';
+}
+
+function setAgent(id, cls, st, tag, tc) {
+  document.getElementById(id).className = 'agent-box ' + cls;
+  document.getElementById(id + 's').textContent = st;
+  const t = document.getElementById(id + 't'); t.textContent = tag; t.className = 'agent-tag ' + tc;
+}
+function setChannel(n, cls, dc, msg) {
+  document.getElementById('ch' + n).className = 'channel ' + cls;
+  document.getElementById('d'  + n).className = 'ch-dot ' + dc;
+  document.getElementById('m'  + n).innerHTML = msg;
+}
+const delay = ms => new Promise(r => setTimeout(r, ms));
+
+async function launch() {
+  if (!imgFile) return;
+  const btn = document.getElementById('launchBtn');
+  btn.disabled = true;
+  btn.innerHTML = '⟳ Sending to Band…';
+  document.getElementById('bandBadge').textContent = 'sending…';
+  document.getElementById('bandBadge').className = 'band-badge live';
+  document.getElementById('resArea').innerHTML = `<div style="color:var(--muted);font-size:10px;text-align:center">⟳<br>Connecting to Band pipeline…</div>`;
+
+  setAgent('a0', 'active', 'Building multipart payload…', 'building', 'run');
+  addLog('[Agent-3] Building payload…', 'band');
+  await delay(400);
+
+  const ctx = {
+    source: 'WheatField-Drone-Sim',
+    telemetry: {
+      temperature : parseFloat(s.temp.toFixed(1)),
+      humidity    : Math.round(s.hum),
+      gps         : { lat: parseFloat(lat.toFixed(4)), lon: parseFloat(lon.toFixed(4)) },
+      altitude    : s.alt,
+      zone        : s.cov > 60 ? 'ZONE-D' : 'ZONE-N'
+    },
+    local_ai_insight: {
+      model      : 'YOLOv8-wheat',
+      confidence : parseFloat(document.getElementById('cYolo').textContent) || 82.0,
+      detections : document.getElementById('cDet').textContent.replace(/"/g, '') || 'leaf_rust'
+    },
+    system_goal: 'تشخيص أمراض القمح وتقديم إرشادات علاجية منظمة'
+  };
+
+  const fd = new FormData();
+  fd.append('image', imgFile, 'wheat_field.jpg');
+  fd.append('context', JSON.stringify(ctx));
+
+  setChannel(1, 'live', 'tx', 'Sender → Router<br><b>POST in progress…</b>');
+  setAgent('a0', 'active', 'POST /proxy → band.ai…', 'sending', 'run');
+
+  let raw = '', data = null;
+  try {
+    const resp = await fetch(PROXY, { method: 'POST', body: fd });
+    raw = await resp.text();
+    addLog('[Band] HTTP ' + resp.status, 'band');
+    try { data = JSON.parse(raw); } catch { data = null; }
+
+    setAgent('a0', 'done', 'Sent ✓ Response received', 'done', 'done');
+    setChannel(1, 'done', 'on', 'Sender → Router ✓');
+
+    await delay(300);
+    setAgent('a1', 'proc', 'Router processing…', 'running', 'proc');
+    setChannel(2, 'live', 'tx', 'Router → Analyzer…');
+    addLog('[Agent-4 Router] Processing…', 'band');
+    await delay(500);
+    setAgent('a1', 'done', 'agent4_output ✓', 'done', 'done');
+    setChannel(2, 'done', 'on', 'agent4_output ✓');
+
+    await delay(300);
+    setAgent('a2', 'proc', 'Analyzer fusing YOLO + telemetry…', 'analyzing', 'proc');
+    setChannel(3, 'live', 'tx', 'Analyzer → Reporter…');
+    addLog('[Agent-5 Analyzer] Deep analysis…', 'band');
+    await delay(600);
+    setAgent('a2', 'done', 'agent5_output ✓', 'done', 'done');
+
+    await delay(300);
+    setAgent('a3', 'proc', 'Reporter building final report…', 'reporting', 'proc');
+    addLog('[Agent-6 Reporter] Building report…', 'band');
+    await delay(400);
+    setAgent('a3', 'done', 'agent6_output → WheatGuard ✓', 'done', 'done');
+    setChannel(3, 'done', 'on', 'agent6_output ✓');
+
+    document.getElementById('bandBadge').textContent = 'Band ✓ done';
+    addLog('[Band] Pipeline complete ✓', 'ok');
+    showResult(data, raw);
+
+  } catch (err) {
+    setAgent('a0', 'err', err.message, 'error', 'err');
+    setChannel(1, 'err', '', 'Failed');
+    document.getElementById('bandBadge').textContent = 'error';
+    document.getElementById('bandBadge').className = 'band-badge err';
+    addLog('[Error] ' + err.message, 'er');
+    document.getElementById('resArea').innerHTML = `<div style="color:var(--red);font-size:10px;text-align:center">✗ ${err.message}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '↗ Send again · إرسال مجدداً';
+}
+
+function showResult(data, raw) {
+  const fmt = v => v ? (typeof v === 'object' ? JSON.stringify(v, null, 1).slice(0, 150) : String(v).slice(0, 150)) : '—';
+  const a4 = data?.agent4_output, a5 = data?.agent5_output, a6 = data?.agent6_output;
+  document.getElementById('resArea').innerHTML = `
+    <div style="width:100%">
+      <span style="padding:4px 11px;border-radius:6px;font-size:10px;font-weight:600;background:rgba(32,160,144,.15);color:var(--cyan);border:1px solid var(--cyan);display:inline-block;margin-bottom:10px">✓ Real Band API Response · 3 agents complete</span>
+      <div class="report-grid">
+        <div class="report-block"><div class="rb-title">⑆ Agent 4 · Router</div><div class="rb-val">${fmt(a4)}</div></div>
+        <div class="report-block"><div class="rb-title">🧠 Agent 5 · Analyzer</div><div class="rb-val">${fmt(a5)}</div></div>
+        <div class="report-block"><div class="rb-title">📄 Agent 6 · Reporter</div><div class="rb-val">${fmt(a6)}</div></div>
+      </div>
+      <div class="raw-box">${raw.slice(0, 900)}${raw.length > 900 ? '\n…' : ''}</div>
+    </div>`;
+}
+</script>
+</body>
+</html>
