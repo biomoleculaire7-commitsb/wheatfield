@@ -1,3 +1,4 @@
+
 const express  = require('express');
 const multer   = require('multer');
 const fetch    = require('node-fetch');
@@ -10,7 +11,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const BAND_KEY    = 'band_a_1780742646_tSsWs9F10mNPRp-4SuHJkrsyB1jK0Y4R4';
 const BAND_URL    = 'https://band.ai/api/v1/agents/run';
-const WEATHER_KEY = 'fdae759e-cfff-49d9-9846-8d2fd759780b'; // WeatherAPI key
+const WEATHER_KEY = 'd1e88c9adebcd857184207b72166ddf1'; // WeatherAPI key
 
 // إحداثيات الحقل — رليزان الجزائر
 const FIELD_LAT = 35.6841;
