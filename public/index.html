@@ -256,14 +256,11 @@ async function launch(){
   setAgent('a0','active','POST /proxy → band.ai…','sending','run');
   addLog(`[Band] POST: ${withImg.length} images + context`,'band');
 
-  let raw='',data=null;
-  try{
-    // ── الإصلاح: timeout 10 ثواني فقط ──────────────
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),10000);
-
-    const resp=await fetch(PROXY,{method:'POST',body:fd,signal:controller.signal});
-    clearTimeout(timer);
+let raw='',data=null;try{
+const controller=new AbortController();
+const timer=setTimeout(()=>controller.abort(),10000);
+const resp=await fetch(PROXY,{method:'POST',body:fd,signal:controller.signal});
+clearTimeout(timer);
 
     raw=await resp.text();
     addLog(`[Band] HTTP ${resp.status}`,'band');
