@@ -208,7 +208,7 @@ const ZONE_LABELS=['A','B','C','D','E','F'];
 let zones=[],s={temp:28.4,hum:62,alt:25,cov:43},lat=35.6841,lon=0.6324;
 
 async function checkProxy(){
-  try{const r=await fetch('/health');if(r.ok){document.getElementById('pdot').className='pdot on';document.getElementById('proxyMsg').textContent='✓ proxy online';document.getElementById('proxyMsg').style.color='var(--g3)'}}
+  try{const r=await fetch('https://wheatfield.onrender.com/health');if(r.ok){document.getElementById('pdot').className='pdot on';document.getElementById('proxyMsg').textContent='✓ proxy online';document.getElementById('proxyMsg').style.color='var(--g3)'}}
   catch{document.getElementById('pdot').className='pdot off';document.getElementById('proxyMsg').textContent='✗ offline';document.getElementById('proxyMsg').style.color='var(--red)'}
 }
 checkProxy();setInterval(checkProxy,15000);
