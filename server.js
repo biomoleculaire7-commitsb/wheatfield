@@ -27,30 +27,37 @@ let weatherTime  = 0;
 
 // ── جلب بيانات الطقس الحقيقية ─────────────────────
 async function getRealWeather(lat, lon) {
-  // كاش لمدة 10 دقائق
   if (weatherCache && Date.now() - weatherTime < 600000) {
     return weatherCache;
   }
   try {
-    // جرب WeatherAPI أولاً
-    const url = `https://api.weatherapi.com/v1/current.json?key=${WEATHER_KEY}&q=${lat},${lon}&aqi=no`;
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_KEY}&units=metric`;
     const resp = await fetch(url);
     if (resp.ok) {
       const data = await resp.json();
       weatherCache = {
-        temperature : data.current.temp_c,
-        humidity    : data.current.humidity,
-        wind_kph    : data.current.wind_kph,
-        condition   : data.current.condition?.text || '',
+        temperature : data.main.temp,
+        humidity    : data.main.humidity,
+        wind_kph    : (data.wind?.speed || 0) * 3.6,
+        condition   : data.weather?.[0]?.description || 'Clear',
         altitude    : 0,
         gps         : { lat, lon },
-        zone        : data.current.humidity > 60 ? 'ZONE-D' : 'ZONE-N',
-        source      : 'WeatherAPI'
+        zone        : data.main.humidity > 60 ? 'ZONE-D' : 'ZONE-N',
+        source      : 'OpenWeatherMap'
       };
       weatherTime = Date.now();
       console.log(`[Weather] ${weatherCache.temperature}°C ${weatherCache.humidity}%`);
       return weatherCache;
     }
+  } catch (e) {
+    console.error('[Weather]', e.message);
+  }
+  return {
+    temperature:28.0, humidity:55, wind_kph:10,
+    condition:'Clear', altitude:0,
+    gps:{lat,lon}, zone:'ZONE-N', source:'fallback'
+  };
+}
   } catch (e) {
     console.error('[Weather error]', e.message);
   }
