@@ -1,345 +1,461 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WheatField — Drone Simulation Platform</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>حقل القمح — الدرون والكشف عن الأمراض</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Reem+Kufi:wght@600&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0a0f08;--bg2:#0f1a0c;--bg3:#141f10;--card:#182214;--card2:#1e2a18;
-  --g:#4a8c2a;--g2:#6ab840;--g3:#8fd460;
-  --gold:#c8940a;--gold2:#f0b820;
-  --blue:#2a7abf;--blue2:#40a0e0;
-  --red:#c83030;--amber:#c88020;--cyan:#20a090;
-  --txt:#c8e8a0;--muted:#5a8040;--border:#243818;
-  --mono:'JetBrains Mono',monospace;
-  --sans:'Space Grotesk',sans-serif;
+  --soil:#12150e; --soil2:#1a1f13; --soil3:#232a19; --line:#34402a;
+  --leaf:#7fbf45; --wheat:#dcae3c; --clay:#d4603f; --sky:#4fa3cf;
+  --text:#e8eed9; --dim:#9aa889;
+  --font:'IBM Plex Sans Arabic',system-ui,sans-serif;
 }
-body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:13px;min-height:100vh}
-nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
-.logo{font-size:15px;font-weight:700;letter-spacing:3px;color:var(--gold2)}
-.logo-sub{font-size:8px;color:var(--muted);letter-spacing:3px;margin-top:1px}
-.nbadge{font-size:9px;padding:2px 9px;border-radius:10px;border:1px solid;letter-spacing:1px}
-.nb-g{background:rgba(74,140,42,.15);color:var(--g3);border-color:var(--g)}
-.nb-b{background:rgba(42,122,191,.15);color:var(--blue2);border-color:var(--blue)}
-.pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--g3);animation:pulse 2s infinite;margin-right:3px}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-#clock{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:auto}
-.proxy-bar{background:var(--card);border-bottom:1px solid var(--border);padding:7px 20px;display:flex;align-items:center;gap:10px;font-size:10px}
-.pdot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:.3s;flex-shrink:0}
-.pdot.on{background:var(--g3);box-shadow:0 0 0 2px rgba(143,212,96,.2)}
-.pdot.off{background:var(--red)}
-#proxyMsg{margin-left:auto;color:var(--muted)}
-.main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 20px;max-width:1100px;margin:0 auto}
-.full{grid-column:1/-1}
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;position:relative}
-.card::before{content:'';position:absolute;top:0;left:16px;right:16px;height:1px;background:linear-gradient(90deg,transparent,var(--g),transparent);opacity:.25}
-.ct{font-size:9px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:11px;display:flex;align-items:center;gap:6px}
-.fmap{background:var(--bg3);border:1px solid var(--border);border-radius:7px;position:relative;overflow:hidden;height:190px;cursor:crosshair}
-.cpill{position:absolute;bottom:6px;left:6px;background:rgba(10,15,8,.9);border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-family:var(--mono);font-size:8px;color:var(--g3)}
-.drone{position:absolute;width:13px;height:13px;transform:translate(-50%,-50%);cursor:pointer;transition:left .6s,top .6s}
-.sring{position:absolute;border-radius:50%;border:1px solid var(--gold2);opacity:0;pointer-events:none;transform:translate(-50%,-50%);animation:sr 3s ease-out infinite}
-@keyframes sr{0%{width:0;height:0;opacity:.6}100%{width:60px;height:60px;opacity:0}}
-.zone-pin{position:absolute;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;border:2px solid;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;pointer-events:none}
-.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
-.sb{background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:9px}
-.slbl{font-size:8px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;font-weight:500}
-.sval{font-size:18px;font-weight:600;letter-spacing:.5px}
-.sbar{height:3px;background:var(--border);border-radius:2px;margin-top:5px;overflow:hidden}
-.sfill{height:100%;border-radius:2px;transition:width .9s}
-.zones-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
-.zone-card{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;position:relative;transition:.3s}
-.zone-card.has-img{border-color:var(--g)}
-.zlabel{font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px}
-.zimg{width:100%;height:68px;object-fit:cover;border-radius:5px;display:none}
-.zph{height:68px;background:var(--bg3);border-radius:5px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;cursor:pointer;border:1px dashed var(--border);transition:.2s}
-.zph:hover{border-color:var(--g)}
-.zgps{font-size:8px;color:var(--muted);margin-top:5px;font-family:var(--mono)}
-.zrem{position:absolute;top:5px;right:5px;width:16px;height:16px;background:var(--red);border-radius:50%;border:none;color:#fff;font-size:10px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1}
-.zone-card.has-img .zrem{display:flex}
-.btn-add{width:100%;padding:9px;border:1px dashed var(--border);border-radius:7px;background:transparent;color:var(--muted);font-size:11px;cursor:pointer;transition:.2s;margin-bottom:9px}
-.btn-add:hover{border-color:var(--g);color:var(--g3)}
-.btn-send{width:100%;padding:11px;border:1px solid var(--g);border-radius:7px;background:rgba(74,140,42,.12);color:var(--g3);font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:6px}
-.btn-send:hover{background:rgba(74,140,42,.25)}
-.btn-send:disabled{opacity:.3;cursor:not-allowed}
-.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:11px}
-.abox{border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg3);transition:.3s}
-.abox.active{border-color:var(--blue);background:rgba(42,122,191,.07)}
-.abox.proc{border-color:var(--amber);background:rgba(200,128,32,.07)}
-.abox.done{border-color:var(--cyan);background:rgba(32,160,144,.07)}
-.abox.err{border-color:var(--red);background:rgba(200,48,48,.07)}
-.anum{font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:4px}
-.aname{font-size:11px;font-weight:600;color:var(--txt);margin-bottom:2px}
-.aar{font-size:9px;color:var(--muted);margin-bottom:5px}
-.ast{font-size:9px;color:var(--muted);line-height:1.5;min-height:24px}
-.atag{font-size:8px;padding:2px 6px;border-radius:4px;border:1px solid var(--border);color:var(--muted);background:var(--card);display:inline-block;margin-top:4px;letter-spacing:1px}
-.atag.run{background:rgba(42,122,191,.15);color:var(--blue2);border-color:var(--blue)}
-.atag.proc{background:rgba(200,128,32,.15);color:var(--amber);border-color:var(--amber)}
-.atag.done{background:rgba(32,160,144,.15);color:var(--cyan);border-color:var(--cyan)}
-.atag.err{background:rgba(200,48,48,.15);color:var(--red);border-color:var(--red)}
-.channels{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-.ch{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px;transition:.3s}
-.ch.live{border-color:var(--blue)}.ch.done{border-color:var(--cyan)}
-.chname{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:4px;display:flex;align-items:center;gap:5px}
-.chdot{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0;transition:.3s}
-.chdot.on{background:var(--g3);box-shadow:0 0 0 2px rgba(143,212,96,.2)}
-.chdot.tx{background:var(--amber);box-shadow:0 0 0 2px rgba(200,128,32,.2)}
-.chmsg{font-size:9px;color:var(--muted);font-family:var(--mono);line-height:1.5}
-.res-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}
-.rb{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:10px}
-.rbt{font-size:8px;color:var(--muted);letter-spacing:2px;margin-bottom:5px;font-weight:600;text-transform:uppercase}
-.rbv{font-size:10px;color:var(--txt);line-height:1.6}
-.raw-box{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.7;margin-top:8px;max-height:130px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
-.raw-box::-webkit-scrollbar{width:2px}
-.logbox{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:8px 10px;max-height:100px;overflow-y:auto;font-family:var(--mono);font-size:9px;line-height:1.9}
-.logbox::-webkit-scrollbar{width:2px}
-.logbox::-webkit-scrollbar-thumb{background:var(--border)}
-.le{display:flex;gap:8px}
-.lt{color:var(--g3);flex-shrink:0}
-.lm{color:var(--muted)}
-.lm.band{color:var(--blue2)}.lm.ok{color:var(--cyan)}.lm.hi{color:var(--amber)}.lm.er{color:var(--red)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--soil);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.6}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--wheat);outline-offset:2px}
+header{display:flex;align-items:center;gap:20px;padding:10px 20px;background:var(--soil2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:1000;flex-wrap:wrap}
+.brand{font-family:'Reem Kufi',var(--font);font-size:26px;color:var(--wheat);line-height:1}
+.brand small{display:block;font-family:var(--font);font-size:12px;color:var(--dim);margin-top:4px}
+nav{display:flex;gap:6px;margin-inline-start:auto}
+nav button{background:none;border:1px solid transparent;padding:8px 16px;border-radius:8px;color:var(--dim);font-weight:500}
+nav button.on{background:var(--soil3);border-color:var(--line);color:var(--text)}
+.srv{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--dim)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.dot.on{background:var(--leaf)}.dot.off{background:var(--clay)}
+.tab{display:none}.tab.on{display:block}
+
+/* field tab */
+.layout{display:grid;grid-template-columns:1fr 400px;min-height:calc(100vh - 62px)}
+.mapbox{position:relative;min-height:460px}
+#map{position:absolute;inset:0;background:#0d0f0a}
+.tools{position:absolute;top:12px;right:56px;left:12px;z-index:900;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}
+.tools>*{pointer-events:auto}
+.search{display:flex;background:var(--soil2);border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:1;min-width:200px;max-width:340px}
+.search input{flex:1;background:none;border:0;padding:9px 12px;min-width:0}
+.search button{background:var(--soil3);border:0;padding:0 14px}
+.chip{background:var(--soil2);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font-weight:500}
+.chip:hover{border-color:var(--leaf)}
+.chip.go{background:var(--leaf);color:#10170a;border-color:var(--leaf)}
+.chip[hidden]{display:none}
+.hint{position:absolute;bottom:14px;right:14px;left:14px;z-index:900;background:rgba(18,21,14,.92);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:14px;text-align:center}
+.hint[hidden]{display:none}
+aside{background:var(--soil2);border-inline-start:1px solid var(--line);padding:18px;overflow-y:auto;max-height:calc(100vh - 62px)}
+.step{margin-bottom:22px}
+.step h3{font-size:16px;font-weight:600;margin-bottom:8px;display:flex;gap:10px;align-items:center}
+.step h3 b{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--wheat);color:#1a1508;font-size:13px}
+.step p{color:var(--dim);font-size:14px;margin-bottom:10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.field-in{background:var(--soil);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+.btn{background:var(--soil3);border:1px solid var(--line);border-radius:8px;padding:9px 14px;font-weight:500}
+.btn:hover:not(:disabled){border-color:var(--leaf)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.main{background:var(--leaf);color:#10170a;border-color:var(--leaf);width:100%;padding:12px;font-weight:600}
+.info{display:flex;gap:16px;margin-top:8px;color:var(--dim);font-size:14px}
+.info b{color:var(--text);font-weight:600}
+.zones{display:grid;gap:10px;margin-top:10px}
+.zone{display:grid;grid-template-columns:72px 1fr auto;gap:12px;align-items:center;background:var(--soil);border:1px solid var(--line);border-radius:10px;padding:8px}
+.zone.has{border-color:var(--leaf)}
+.thumb{width:72px;height:56px;border-radius:6px;background:var(--soil3);object-fit:cover;display:grid;place-items:center;color:var(--dim);font-size:12px;text-align:center;cursor:pointer;border:1px dashed var(--line)}
+img.thumb{border:0}
+.zone strong{display:block}
+.zone small{color:var(--dim);direction:ltr;display:block;text-align:right}
+.zone .x{background:none;border:0;color:var(--dim);font-size:20px;padding:4px 8px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.stat{background:var(--soil);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.stat span{display:block;color:var(--dim);font-size:12px}
+.stat b{font-size:18px;font-weight:600}
+.log{background:var(--soil);border:1px solid var(--line);border-radius:8px;padding:8px 10px;max-height:130px;overflow-y:auto;font-size:13px;color:var(--dim);margin-top:10px}
+.log div{padding:2px 0}.log .ok{color:var(--leaf)}.log .er{color:var(--clay)}.log .hi{color:var(--wheat)}
+
+/* map markers */
+.zp{width:28px;height:28px;border-radius:50%;background:rgba(18,21,14,.9);border:2px solid var(--wheat);color:var(--text);display:grid;place-items:center;font-weight:600;font-size:13px}
+.zp.has{border-color:var(--leaf)}.zp.ok{background:var(--leaf);color:#10170a;border-color:#fff}.zp.sick{background:var(--clay);color:#fff;border-color:#fff}.zp.unk{background:var(--wheat);color:#1a1508;border-color:#fff}
+.drone{font-size:26px;filter:drop-shadow(0 2px 3px #000);transform:translate(-50%,-50%)}
+
+/* guard tab */
+.wrap{max-width:1100px;margin:0 auto;padding:20px}
+.bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--soil2);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:16px}
+.bar .grow{flex:1;min-width:200px}
+.bar small{color:var(--dim);display:block}
+.tel{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:12px}
+.tel .stat b{font-size:22px}
+.risk{background:var(--soil2);border:1px solid var(--line);border-inline-start:4px solid var(--wheat);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:14px}
+.summary{font-size:20px;font-weight:600;margin:16px 0 12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.card{background:var(--soil2);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card canvas{width:100%;display:block;background:#000}
+.card .body{padding:12px 14px}
+.card h4{font-size:17px;font-weight:600}
+.card .en{color:var(--dim);font-size:13px;direction:ltr;text-align:right}
+.badge{display:inline-block;border-radius:20px;padding:2px 12px;font-size:13px;font-weight:600;margin-top:6px}
+.badge.ok{background:rgba(127,191,69,.2);color:var(--leaf)}.badge.sick{background:rgba(212,96,63,.2);color:var(--clay)}.badge.unk{background:rgba(220,174,60,.2);color:var(--wheat)}
+.card p{margin-top:8px;font-size:14px;color:var(--dim)}
+.empty{text-align:center;color:var(--dim);padding:50px 10px;border:1px dashed var(--line);border-radius:12px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.mapbox{height:60vh}aside{max-height:none;border-inline-start:0;border-top:1px solid var(--line)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<nav>
-  <div style="width:32px;height:32px;background:var(--card2);border:1px solid var(--g);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px">🌾</div>
-  <div><div class="logo">WHEATFIELD</div><div class="logo-sub">DRONE SIMULATION PLATFORM</div></div>
-  <span class="nbadge nb-g"><span class="pulse"></span>DRONE LIVE</span>
-  <span class="nbadge nb-b">BAND AGENTS</span>
-  <span id="clock">--:--:--</span>
-</nav>
-<div class="proxy-bar">
-  <div class="pdot" id="pdot"></div>
-  <span style="color:var(--txt);font-weight:500">Proxy</span>
-  <span style="font-family:var(--mono);color:var(--muted)">wheatfield.onrender.com/proxy → band.ai</span>
-  <span id="proxyMsg">checking…</span>
-</div>
-<div class="main">
-  <div class="card">
-    <div class="ct">🗺 FIELD MAP · انقر لإضافة منطقة</div>
-    <div class="fmap" id="mapArea" onclick="addZoneFromMap(event)">
-      <svg width="100%" height="100%" viewBox="0 0 320 190" xmlns="http://www.w3.org/2000/svg">
-        <rect width="320" height="190" fill="#0a0f08"/>
-        <g opacity=".2">
-          <rect x="8" y="8" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="18" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="28" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="38" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="48" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="58" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="68" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="78" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="88" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="98" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="108" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="118" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="128" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="138" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="148" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="158" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="168" width="304" height="5" rx="2" fill="#4a8c2a"/>
-          <rect x="8" y="178" width="304" height="5" rx="2" fill="#4a8c2a"/>
-        </g>
-        <ellipse cx="220" cy="128" rx="38" ry="22" fill="#c88020" opacity=".14"/>
-        <text x="220" y="131" text-anchor="middle" font-size="7" fill="#f0b820" font-family="monospace">ZONE-D</text>
-        <rect x="6" y="6" width="308" height="178" rx="4" fill="none" stroke="#4a8c2a" stroke-width=".7" opacity=".3"/>
-        <text x="160" y="96" text-anchor="middle" font-size="9" fill="#2a4018" font-family="sans-serif">انقر على الخريطة لتحديد منطقة</text>
-        <text x="160" y="109" text-anchor="middle" font-size="8" fill="#2a4018" font-family="monospace">Click to add field spot</text>
-      </svg>
-      <div class="drone" id="drone" style="left:30%;top:24%">
-        <svg viewBox="0 0 13 13"><circle cx="6.5" cy="6.5" r="5.5" fill="rgba(10,15,8,.92)" stroke="#c8940a" stroke-width="1"/><circle cx="6.5" cy="6.5" r="2.2" fill="#f0b820"/><line x1="6.5" y1="1" x2="6.5" y2="4" stroke="#f0b820" stroke-width=".8"/><line x1="6.5" y1="9" x2="6.5" y2="12" stroke="#f0b820" stroke-width=".8"/><line x1="1" y1="6.5" x2="4" y2="6.5" stroke="#f0b820" stroke-width=".8"/><line x1="9" y1="6.5" x2="12" y2="6.5" stroke="#f0b820" stroke-width=".8"/></svg>
+<header>
+  <div class="brand">حقل القمح<small>الدرون والكشف عن أمراض القمح</small></div>
+  <nav>
+    <button id="nb-field" class="on" onclick="showTab('field')">حقلي والدرون</button>
+    <button id="nb-guard" onclick="showTab('guard')">كشف الأمراض</button>
+  </nav>
+  <div class="srv"><span class="dot" id="srvDot"></span><span id="srvTxt">فحص الخادم…</span></div>
+</header>
+
+<!-- ============ الحقل والدرون ============ -->
+<div id="tab-field" class="tab on">
+<div class="layout">
+  <div class="mapbox">
+    <div id="map"></div>
+    <div class="tools">
+      <form class="search" onsubmit="searchPlace(event)">
+        <input id="q" placeholder="ابحث عن بلدية أو منطقة في الجزائر" aria-label="بحث">
+        <button type="submit">بحث</button>
+      </form>
+      <button class="chip" onclick="locateMe()">موقعي</button>
+      <button class="chip" id="bDraw" onclick="startDraw()">ارسم حدود حقلي</button>
+      <button class="chip go" id="bFinish" onclick="finishDraw()" hidden>أنهِ الرسم</button>
+      <button class="chip" id="bUndo" onclick="undoPoint()" hidden>تراجع</button>
+    </div>
+    <div class="hint" id="hint" hidden>انقر على الخريطة عند كل زاوية من زوايا حقلك، ثم اضغط «أنهِ الرسم». استخدم طبقة الأقمار الصناعية لرؤية حدود الحقل بوضوح.</div>
+  </div>
+
+  <aside>
+    <div class="step">
+      <h3><b>1</b>حدد حقلك</h3>
+      <p>قرّب الخريطة من أرضك وارسم حدودها بالنقر على زواياها.</p>
+      <input class="field-in" id="fname" placeholder="اسم الحقل (مثال: حقل الوادي)">
+      <div class="info"><span>المساحة: <b id="iArea">—</b></span><span>الإحداثيات: <b id="iCenter" style="direction:ltr;display:inline-block">—</b></span></div>
+    </div>
+
+    <div class="step">
+      <h3><b>2</b>نقاط الفحص</h3>
+      <p>يوزّع التطبيق نقاط الفحص داخل حقلك. ارفع صورة أو فيديو لكل نقطة.</p>
+      <div class="row">
+        <select id="nZones" class="field-in" style="width:auto" aria-label="عدد النقاط">
+          <option value="2">2 نقطتان</option><option value="3">3 نقاط</option><option value="4" selected>4 نقاط</option><option value="5">5 نقاط</option><option value="6">6 نقاط</option>
+        </select>
+        <button class="btn" id="bGen" onclick="genZones()" disabled>وزّع النقاط</button>
       </div>
-      <div class="sring" id="scanEl" style="left:30%;top:24%"></div>
-      <div class="cpill" id="coordPill">35.6841°N · 0.6324°W · 25m</div>
+      <div class="zones" id="zones"></div>
     </div>
-    <div class="sgrid">
-      <div class="sb"><div class="slbl">TEMPERATURE</div><div class="sval" id="sT" style="color:#c88030">28.4°C</div><div class="sbar"><div class="sfill" id="bT" style="width:57%;background:#c88030"></div></div></div>
-      <div class="sb"><div class="slbl">HUMIDITY</div><div class="sval" id="sH" style="color:#40a0e0">62%</div><div class="sbar"><div class="sfill" id="bH" style="width:62%;background:#40a0e0"></div></div></div>
-      <div class="sb"><div class="slbl">ALTITUDE</div><div class="sval" id="sA" style="color:#6ab840">25m</div><div class="sbar"><div class="sfill" id="bA" style="width:50%;background:#4a8c2a"></div></div></div>
-      <div class="sb"><div class="slbl">COVERAGE</div><div class="sval" id="sC" style="color:#f0b820">43%</div><div class="sbar"><div class="sfill" id="bC" style="width:43%;background:#c8940a"></div></div></div>
-    </div>
-  </div>
-  <div style="display:flex;flex-direction:column;gap:10px">
-    <div class="card">
-      <div class="ct">📍 FIELD ZONES · مناطق الحقل <span id="zoneCount" style="margin-left:auto;color:var(--g3)">0 zones</span></div>
-      <div class="zones-grid" id="zonesGrid"></div>
-      <button class="btn-add" onclick="addZone()">+ Add zone · إضافة منطقة</button>
-      <button class="btn-send" id="sendBtn" onclick="launch()" disabled>📡 Send all zones to Band · إرسال الكل</button>
-    </div>
-    <div class="card" style="flex:1">
-      <div class="ct">📋 SYSTEM LOG</div>
-      <div class="logbox" id="logBox">
-        <div class="le"><span class="lt" id="l0">--:--</span><span class="lm">WheatField online. Click map to add zones.</span></div>
-        <div class="le"><span class="lt" id="l1">--:--</span><span class="lm">Server: wheatfield.onrender.com</span></div>
-        <div class="le"><span class="lt" id="l2">--:--</span><span class="lm hi">Add zones, upload images, Send All.</span></div>
+
+    <div class="step">
+      <h3><b>3</b>أرسل الدرون</h3>
+      <div class="stats">
+        <div class="stat"><span>الارتفاع</span><b id="sAlt">0 م</b></div>
+        <div class="stat"><span>البطارية</span><b id="sBat">100%</b></div>
+        <div class="stat"><span>المسح</span><b id="sCov">0%</b></div>
       </div>
+      <button class="btn main" id="bLaunch" onclick="launch()" disabled>أطلق الدرون وحلّل الحقل</button>
+      <div class="log" id="log"><div>ارسم حقلك على الخريطة للبدء.</div></div>
     </div>
-  </div>
-  <div class="card full">
-    <div class="ct" style="margin-bottom:12px">📡 BAND PIPELINE · @biomoleculaire7/wheatsheild-diagnostic-a <span class="atag" id="bbadge" style="margin-left:auto">standby</span></div>
-    <div class="pipeline">
-      <div class="abox" id="a0"><div class="anum">SENDER</div><div class="aname">🛸 WheatField</div><div class="aar">منصة الدرون</div><div class="ast" id="a0s">Multi-zone images + telemetry → Band</div><span class="atag" id="a0t">standby</span></div>
-      <div class="abox" id="a1"><div class="anum">AGENT 04</div><div class="aname">⑆ Router</div><div class="aar">وكيل التوجيه</div><div class="ast" id="a1s">Routes task → agent4_output</div><span class="atag" id="a1t">waiting</span></div>
-      <div class="abox" id="a2"><div class="anum">AGENT 05</div><div class="aname">🧠 Analyzer</div><div class="aar">وكيل التحليل</div><div class="ast" id="a2s">Analyzes all zones → agent5_output</div><span class="atag" id="a2t">waiting</span></div>
-      <div class="abox" id="a3"><div class="anum">AGENT 06</div><div class="aname">📄 Reporter</div><div class="aar">وكيل التقرير</div><div class="ast" id="a3s">Full field report → agent6_output</div><span class="atag" id="a3t">waiting</span></div>
-    </div>
-    <div class="channels">
-      <div class="ch" id="ch1"><div class="chname"><div class="chdot" id="d1"></div>band://drone-context</div><div class="chmsg" id="m1">Sender → Router<br>Multi-zone payload</div></div>
-      <div class="ch" id="ch2"><div class="chname"><div class="chdot" id="d2"></div>band://task-delegate</div><div class="chmsg" id="m2">Router → Analyzer<br>agent4_output</div></div>
-      <div class="ch" id="ch3"><div class="chname"><div class="chdot" id="d3"></div>band://analysis-result</div><div class="chmsg" id="m3">Analyzer → Reporter<br>agent5 + agent6</div></div>
-    </div>
-  </div>
-  <div class="card full">
-    <div class="ct">🌾 WHEATGUARD RESULT · نتيجة تحليل الحقل</div>
-    <div id="resArea" style="display:flex;align-items:center;justify-content:center;min-height:60px;color:var(--muted);font-size:10px;flex-direction:column;gap:4px;text-align:center">
-      <div style="font-size:20px">🌾</div>
-      <div>Add zones → upload images → Send All</div>
-      <div style="font-size:9px">أضف مناطق، ارفع الصور، ثم أرسل الكل</div>
-    </div>
-  </div>
+  </aside>
 </div>
+</div>
+
+<!-- ============ كشف الأمراض ============ -->
+<div id="tab-guard" class="tab">
+<div class="wrap">
+  <div class="bar">
+    <span class="dot" id="mDot"></span>
+    <div class="grow"><strong id="mTxt">النموذج غير محمّل</strong><small id="mSub">wheat-disease.onnx</small></div>
+    <label class="btn">اختر ملف النموذج<input type="file" accept=".onnx" id="mFile" hidden></label>
+  </div>
+  <div class="bar">
+    <div class="grow"><strong id="srcTxt">لا توجد بيانات بعد</strong><small>تصل الصور والقياسات من الدرون، أو اسحبها من الخادم.</small></div>
+    <button class="btn" onclick="pullServer(true)">استقبل من الخادم</button>
+    <label class="row" style="gap:6px"><input type="checkbox" id="poll" onchange="togglePoll()"> تحديث تلقائي كل 5 ثوانٍ</label>
+  </div>
+  <div class="tel" id="tel"></div>
+  <div class="risk" id="risk" hidden></div>
+  <div class="summary" id="summary"></div>
+  <div class="cards" id="cards"><div class="empty" style="grid-column:1/-1">أطلق الدرون من تبويب «حقلي والدرون» أو استقبل آخر بيانات من الخادم لتبدأ عملية الكشف.</div></div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
 <script>
-// ── الروابط الصحيحة ──────────────────────────────
-const SERVER  = 'https://wheatfield.onrender.com';
-const PROXY   = SERVER + '/proxy';
-const HEALTH  = SERVER + '/health';
-
-const ZONE_COLORS=['#4a8c2a','#2a7abf','#c88020','#c83030','#20a090','#8820c8'];
-const ZONE_LABELS=['A','B','C','D','E','F'];
-let zones=[],s={temp:28.4,hum:62,alt:25,cov:43},lat=35.6841,lon=0.6324;
-
-// ── فحص الاتصال بالسيرفر ─────────────────────────
-async function checkProxy(){
-  try{
-    const r=await fetch(HEALTH);
-    if(r.ok){
-      document.getElementById('pdot').className='pdot on';
-      document.getElementById('proxyMsg').textContent='✓ proxy online';
-      document.getElementById('proxyMsg').style.color='var(--g3)';
-    }
-  }catch{
-    document.getElementById('pdot').className='pdot off';
-    document.getElementById('proxyMsg').textContent='✗ offline';
-    document.getElementById('proxyMsg').style.color='var(--red)';
-  }
+/* ============== الإعدادات ============== */
+const SERVER = 'https://wheatfield.onrender.com';
+const MODEL_URL = './models/wheat-disease.onnx';      // ضع النموذج هنا: public/models/wheat-disease.onnx
+const LABELS = ['Barley Yellow Dwarf','Healthy','Leaf Rust','Powdery Mildew']; // نفس ترتيب تدريب النموذج
+const THRESH = 0.25;
+const AR = {'Barley Yellow Dwarf':'تقزم الشعير الأصفر','Healthy':'محصول سليم','Leaf Rust':'صدأ الأوراق','Powdery Mildew':'البياض الدقيقي'};
+const TREAT = {
+ 'Barley Yellow Dwarf':'مكافحة حشرات المن الناقلة للفيروس واستخدام أصناف مقاومة.',
+ 'Healthy':'استمر في المتابعة الدورية والتسميد المتوازن للحفاظ على جودة المحصول.',
+ 'Leaf Rust':'رش مبيدات فطرية تحتوي على التريازول عند ظهور أولى علامات الإصابة.',
+ 'Powdery Mildew':'استخدام الكبريت الميكروني أو مبيدات فطرية جهازية.'
+};
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const clock = () => new Date().toTimeString().slice(0,5);
+function log(m, c=''){ const d=document.createElement('div'); d.className=c; d.textContent=clock()+'  '+m; const L=$('log'); L.prepend(d); }
+function showTab(n){
+  ['field','guard'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
+  if(n==='field') setTimeout(()=>map.invalidateSize(),50);
 }
-checkProxy();setInterval(checkProxy,15000);
 
-function tick(){const n=new Date();document.getElementById('clock').textContent=n.toTimeString().slice(0,8);['l0','l1','l2'].forEach((id,i)=>{document.getElementById(id).textContent=new Date(n-(i+1)*180000).toTimeString().slice(0,5);})}
-setInterval(tick,1000);tick();
+/* ============== حالة الخادم ============== */
+async function checkServer(){
+  try{ const r=await fetch(SERVER+'/health',{cache:'no-store'}); if(!r.ok) throw 0;
+    $('srvDot').className='dot on'; $('srvTxt').textContent='الخادم متصل'; }
+  catch{ $('srvDot').className='dot off'; $('srvTxt').textContent='الخادم غير متصل'; }
+}
+checkServer(); setInterval(checkServer,20000);
 
-function upd(){s.temp+=((Math.random()-.5)*.5);s.temp=Math.max(20,Math.min(38,s.temp));s.hum+=((Math.random()-.5)*.7);s.hum=Math.max(30,Math.min(90,s.hum));document.getElementById('sT').textContent=s.temp.toFixed(1)+'°C';document.getElementById('bT').style.width=(s.temp/40*100)+'%';document.getElementById('sH').textContent=Math.round(s.hum)+'%';document.getElementById('bH').style.width=s.hum+'%'}
-setInterval(upd,2500);
+/* ============== الخريطة (الجزائر) ============== */
+const DZ_BOUNDS = [[18.9,-8.8],[37.3,12.1]];
+const map = L.map('map',{minZoom:5,maxBounds:L.latLngBounds(DZ_BOUNDS).pad(.15),maxBoundsViscosity:.9}).setView([28.2,2.6],5);
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri World Imagery'});
+osm.addTo(map);
+L.control.layers({'خريطة الطرق':osm,'أقمار صناعية':sat},null,{position:'topleft'}).addTo(map);
 
-function moveDrone(){lat=35.68+(Math.random()-.5)*.02;lon=0.63+(Math.random()-.5)*.02;const x=15+Math.random()*70,y=10+Math.random()*70;s.alt=Math.round(15+Math.random()*30);s.cov=Math.min(99,s.cov+1);document.getElementById('drone').style.left=x+'%';document.getElementById('drone').style.top=y+'%';document.getElementById('scanEl').style.left=x+'%';document.getElementById('scanEl').style.top=y+'%';document.getElementById('coordPill').textContent=lat.toFixed(4)+'°N · '+lon.toFixed(4)+'°W · '+s.alt+'m';document.getElementById('sA').textContent=s.alt+'m';document.getElementById('bA').style.width=(s.alt/60*100)+'%';document.getElementById('sC').textContent=s.cov+'%';document.getElementById('bC').style.width=s.cov+'%'}
-setInterval(()=>{if(Math.random()>.6)moveDrone();},6000);
+let drawing=false, pts=[], poly=null, vtx=[], field=null, zones=[], droneMk=null;
 
-function addLog(msg,cls=''){const b=document.getElementById('logBox'),el=document.createElement('div');el.className='le';const t=new Date().toTimeString().slice(0,5);el.innerHTML=`<span class="lt">${t}</span><span class="lm ${cls}">${msg}</span>`;b.insertBefore(el,b.firstChild);if(b.children.length>22)b.removeChild(b.lastChild)}
-function addZoneFromMap(e){if(zones.length>=6)return;const rect=e.currentTarget.getBoundingClientRect();const xPct=((e.clientX-rect.left)/rect.width*100).toFixed(1);const yPct=((e.clientY-rect.top)/rect.height*100).toFixed(1);const zLat=(35.68+(parseFloat(yPct)/100-.5)*.04).toFixed(4);const zLon=(0.63+(parseFloat(xPct)/100-.5)*.04).toFixed(4);addZoneAt(xPct,yPct,zLat,zLon)}
-function addZone(){if(zones.length>=6)return;const x=(18+Math.random()*64).toFixed(1);const y=(12+Math.random()*68).toFixed(1);const zLat=(35.68+(Math.random()-.5)*.03).toFixed(4);const zLon=(0.63+(Math.random()-.5)*.03).toFixed(4);addZoneAt(x,y,zLat,zLon)}
-function addZoneAt(x,y,zLat,zLon){const idx=zones.length;const label=ZONE_LABELS[idx],color=ZONE_COLORS[idx];zones.push({id:idx,label,color,lat:zLat,lon:zLon,mapX:x,mapY:y,file:null,dataUrl:null});const pin=document.createElement('div');pin.className='zone-pin';pin.id='pin'+idx;pin.style.cssText=`left:${x}%;top:${y}%;border-color:${color};background:${color}22;color:${color}`;pin.textContent=label;document.getElementById('mapArea').appendChild(pin);renderZones();addLog(`Zone ${label} added — ${zLat}°N, ${zLon}°W`,'ok')}
-function renderZones(){const grid=document.getElementById('zonesGrid');grid.innerHTML='';zones.forEach((z,i)=>{const card=document.createElement('div');card.className='zone-card'+(z.file?' has-img':'');card.innerHTML=`<button class="zrem" onclick="removeZone(${i})">×</button><div class="zlabel" style="color:${z.color}">ZONE ${z.label}</div>${z.dataUrl?`<img class="zimg" src="${z.dataUrl}" style="display:block">`:`<div class="zph" onclick="document.getElementById('fi${i}').click()"><span style="font-size:18px">📷</span><span style="font-size:9px;color:var(--muted)">Upload image</span><span style="font-size:8px;color:var(--border)">ارفع صورة</span></div>`}<div class="zgps">${z.lat}°N · ${z.lon}°W</div><input type="file" id="fi${i}" accept="image/*" style="display:none" onchange="onZoneFile(${i},this)">`;grid.appendChild(card)});document.getElementById('zoneCount').textContent=zones.length+' zone'+(zones.length!==1?'s':'');document.getElementById('sendBtn').disabled=!zones.some(z=>z.file)}
-function onZoneFile(i,input){const f=input.files[0];if(!f)return;zones[i].file=f;const r=new FileReader();r.onload=e=>{zones[i].dataUrl=e.target.result;renderZones();addLog(`Zone ${zones[i].label}: image ready ✓`,'ok')};r.readAsDataURL(f)}
-function removeZone(i){const label=zones[i].label;document.getElementById('pin'+i)?.remove();zones.splice(i,1);renderZones();addLog(`Zone ${label} removed`)}
-function setAgent(id,cls,st,tag,tc){document.getElementById(id).className='abox '+cls;document.getElementById(id+'s').textContent=st;const t=document.getElementById(id+'t');t.textContent=tag;t.className='atag '+tc}
-function setCh(n,cls,dc,msg){document.getElementById('ch'+n).className='ch '+cls;document.getElementById('d'+n).className='chdot '+dc;document.getElementById('m'+n).innerHTML=msg}
-const dl=ms=>new Promise(r=>setTimeout(r,ms));
+function startDraw(){
+  clearField(true); drawing=true;
+  $('hint').hidden=false; $('bFinish').hidden=false; $('bUndo').hidden=false; $('bDraw').hidden=true;
+  map.getContainer().style.cursor='crosshair';
+}
+function undoPoint(){ pts.pop(); redrawPoly(); }
+map.on('click',e=>{ if(!drawing) return; pts.push([e.latlng.lat,e.latlng.lng]); redrawPoly(); });
+function redrawPoly(){
+  if(poly) map.removeLayer(poly); vtx.forEach(v=>map.removeLayer(v)); vtx=[];
+  if(pts.length>=2) poly=L.polygon(pts,{color:'#dcae3c',weight:2,fillColor:'#7fbf45',fillOpacity:.22}).addTo(map);
+  vtx=pts.map(p=>L.circleMarker(p,{radius:5,color:'#fff',fillColor:'#dcae3c',fillOpacity:1,weight:1}).addTo(map));
+}
+function finishDraw(){
+  if(pts.length<3){ log('ارسم 3 زوايا على الأقل.','er'); return; }
+  drawing=false; map.getContainer().style.cursor='';
+  $('hint').hidden=true; $('bFinish').hidden=true; $('bUndo').hidden=true; $('bDraw').hidden=false;
+  setField(pts.slice(), $('fname').value);
+  localStorage.setItem('wf_field',JSON.stringify({poly:field.poly,name:field.name}));
+}
+function clearField(keepName){
+  if(poly) map.removeLayer(poly); vtx.forEach(v=>map.removeLayer(v)); vtx=[]; poly=null; pts=[]; field=null;
+  clearZones(); $('iArea').textContent='—'; $('iCenter').textContent='—'; $('bGen').disabled=true; $('bLaunch').disabled=true;
+  if(!keepName) $('fname').value='';
+}
+function areaHa(p){
+  const lat0=p.reduce((a,b)=>a+b[0],0)/p.length, lng0=p.reduce((a,b)=>a+b[1],0)/p.length;
+  const m=p.map(([la,lo])=>[(lo-lng0)*111320*Math.cos(lat0*Math.PI/180),(la-lat0)*110540]);
+  let s=0; for(let i=0;i<m.length;i++){ const j=(i+1)%m.length; s+=m[i][0]*m[j][1]-m[j][0]*m[i][1]; }
+  return Math.abs(s)/2/10000;
+}
+function setField(p,name){
+  pts=p.slice(); redrawPoly();
+  const c=[p.reduce((a,b)=>a+b[0],0)/p.length,p.reduce((a,b)=>a+b[1],0)/p.length];
+  field={poly:p,center:c,area_ha:+areaHa(p).toFixed(2),name:name||'حقلي'};
+  $('iArea').textContent=field.area_ha+' هكتار'; $('iCenter').textContent=c[0].toFixed(4)+', '+c[1].toFixed(4);
+  $('bGen').disabled=false; map.fitBounds(poly.getBounds(),{padding:[40,40],maxZoom:18});
+  log(`تم تحديد الحقل: ${field.area_ha} هكتار.`,'ok');
+}
+async function searchPlace(e){
+  e.preventDefault(); const q=$('q').value.trim(); if(!q) return;
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=dz&q='+encodeURIComponent(q));
+    const j=await r.json();
+    if(!j.length){ log('لم يُعثر على المكان. جرّب اسم البلدية أو الولاية.','er'); return; }
+    map.setView([+j[0].lat,+j[0].lon],14);
+  }catch{ log('تعذّر البحث. تحقق من الاتصال بالإنترنت.','er'); }
+}
+function locateMe(){
+  if(!navigator.geolocation){ log('المتصفح لا يدعم تحديد الموقع.','er'); return; }
+  navigator.geolocation.getCurrentPosition(p=>map.setView([p.coords.latitude,p.coords.longitude],16),
+    ()=>log('لم يُسمح بتحديد الموقع. فعّل الإذن أو ابحث بالاسم.','er'));
+}
+// استرجاع حقل محفوظ
+try{ const s=JSON.parse(localStorage.getItem('wf_field')||'null'); if(s&&s.poly&&s.poly.length>=3){ $('fname').value=s.name||''; setField(s.poly,s.name); } }catch{}
 
+/* ============== نقاط الفحص ============== */
+function inside(pt,p){
+  let c=false; for(let i=0,j=p.length-1;i<p.length;j=i++){
+    const [yi,xi]=p[i],[yj,xj]=p[j];
+    if(((yi>pt[0])!==(yj>pt[0]))&&(pt[1]<(xj-xi)*(pt[0]-yi)/(yj-yi)+xi)) c=!c;
+  } return c;
+}
+function genZones(){
+  if(!field) return; clearZones();
+  const n=+$('nZones').value, la=field.poly.map(p=>p[0]), lo=field.poly.map(p=>p[1]);
+  const [a,b,c,d]=[Math.min(...la),Math.max(...la),Math.min(...lo),Math.max(...lo)], K=7, cand=[];
+  for(let i=0;i<K;i++)for(let j=0;j<K;j++){ const p=[a+(b-a)*(i+.5)/K, c+(d-c)*(j+.5)/K]; if(inside(p,field.poly)) cand.push(p); }
+  if(!cand.length) cand.push(field.center);
+  const pick=[]; for(let i=0;i<Math.min(n,cand.length);i++) pick.push(cand[Math.floor(i*cand.length/Math.min(n,cand.length))]);
+  zones=pick.map((p,i)=>{ const z={label:'ABCDEF'[i],lat:p[0],lng:p[1],blob:null,dataUrl:null};
+    z.marker=L.marker(p,{icon:L.divIcon({className:'',html:`<div class="zp">${z.label}</div>`,iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map); return z; });
+  renderZones(); log(`وُزّعت ${zones.length} نقاط فحص.`,'ok');
+}
+function clearZones(){ zones.forEach(z=>z.marker&&map.removeLayer(z.marker)); zones=[]; if(droneMk){map.removeLayer(droneMk);droneMk=null;} renderZones(); }
+function setMk(z,state){ z.marker.setIcon(L.divIcon({className:'',html:`<div class="zp ${state}">${z.label}</div>`,iconSize:[28,28],iconAnchor:[14,14]})); }
+function renderZones(){
+  const box=$('zones'); box.innerHTML='';
+  zones.forEach((z,i)=>{
+    const d=document.createElement('div'); d.className='zone'+(z.blob?' has':'');
+    const th=z.dataUrl?`<img class="thumb" src="${z.dataUrl}" alt="النقطة ${z.label}">`:`<div class="thumb">ارفع صورة أو فيديو</div>`;
+    d.innerHTML=`${th}<div><strong>النقطة ${z.label}</strong><small>${z.lat.toFixed(5)}, ${z.lng.toFixed(5)}</small></div><button class="x" aria-label="إزالة الملف" title="إزالة الملف">×</button>`;
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,video/*'; inp.hidden=true; d.appendChild(inp);
+    d.querySelector('.thumb').onclick=()=>inp.click();
+    inp.onchange=async()=>{ if(!inp.files[0]) return; try{ const r=await mediaToJpeg(inp.files[0]); z.blob=r.blob; z.dataUrl=r.dataUrl; setMk(z,'has'); log(`النقطة ${z.label}: الملف جاهز.`,'ok'); }catch{ log('تعذّر قراءة الملف. جرّب صورة JPG أو فيديو MP4.','er'); } renderZones(); };
+    d.querySelector('.x').onclick=()=>{ z.blob=null; z.dataUrl=null; setMk(z,''); renderZones(); };
+    box.appendChild(d);
+  });
+  $('bLaunch').disabled=!(field&&zones.some(z=>z.blob));
+}
+
+/* ============== الصور والفيديو ============== */
+function loadImg(url){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; }); }
+function videoFrame(file){ return new Promise((res,rej)=>{
+  const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.preload='auto'; v.src=URL.createObjectURL(file);
+  v.onloadedmetadata=()=>{ v.currentTime=Math.max(0,Math.min(v.duration/2,v.duration-.1))||0; };
+  v.onseeked=()=>res(v); v.onerror=rej; }); }
+async function mediaToJpeg(file){
+  const src=file.type.startsWith('video/')?await videoFrame(file):await loadImg(URL.createObjectURL(file));
+  const w=src.videoWidth||src.naturalWidth, h=src.videoHeight||src.naturalHeight, k=Math.min(1,960/Math.max(w,h));
+  const c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k); c.getContext('2d').drawImage(src,0,0,c.width,c.height);
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.82)); return {blob,dataUrl:c.toDataURL('image/jpeg',.82)};
+}
+
+/* ============== الطقس والإرسال ============== */
+function cond(c){ if(c===0)return'سماء صافية'; if(c<=3)return'غائم جزئياً'; if(c<=49)return'ضباب'; if(c<=67)return'أمطار'; if(c<=77)return'ثلوج'; if(c<=82)return'زخات'; return'عاصفة رعدية'; }
+async function openMeteo(lat,lon){
+  const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code`);
+  const c=(await r.json()).current;
+  return {temperature:c.temperature_2m,humidity:c.relative_humidity_2m,wind_kph:c.wind_speed_10m,condition:cond(c.weather_code),gps:{lat,lon},source:'Open-Meteo'};
+}
+async function sendToServer(ready,alt){
+  const fd=new FormData(); ready.forEach((z,i)=>fd.append('image_'+i,z.blob,`zone_${z.label}.jpg`));
+  fd.append('context',JSON.stringify({
+    source:'WheatField-Web',image_count:ready.length,
+    field:{name:field.name,polygon:field.poly,center:field.center,area_ha:field.area_ha},
+    spots:ready.map((z,i)=>({spot:z.label,index:i+1,lat:z.lat,lon:z.lng})),
+    telemetry:{altitude:alt},system_goal:'تشخيص أمراض القمح من عدة نقاط في الحقل'}));
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),25000);
+  try{ const r=await fetch(SERVER+'/proxy',{method:'POST',body:fd,signal:ctl.signal}); if(!r.ok) return null; const j=await r.json(); return j.telemetry||null; }
+  catch{ return null; } finally{ clearTimeout(t); }
+}
+
+/* ============== رحلة الدرون ============== */
+function tween(a,b,ms,cb){ return new Promise(res=>{ const t0=performance.now(); (function s(t){ const k=Math.min(1,(t-t0)/ms); cb(a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k); k<1?requestAnimationFrame(s):res(); })(t0); }); }
 async function launch(){
-  const withImg=zones.filter(z=>z.file);
-  if(!withImg.length)return;
-  const btn=document.getElementById('sendBtn');
-  btn.disabled=true;btn.textContent='⟳ Sending…';
-  document.getElementById('bbadge').textContent='running…';
-  document.getElementById('resArea').innerHTML=`<div style="color:var(--muted);font-size:10px;text-align:center">⟳<br>Sending ${withImg.length} zones to Band…</div>`;
-  setAgent('a0','active',`Building: ${withImg.length} images + telemetry…`,'building','run');
-  addLog(`[Sender] ${withImg.length} zones → Band`,'band');
-  await dl(300);
-
-  const ctx={
-    source:'WheatField-Drone-Sim',
-    image_count:withImg.length,
-    spots:withImg.map((z,i)=>({spot:z.label,index:i+1,lat:parseFloat(z.lat),lon:parseFloat(z.lon)})),
-    telemetry:{temperature:parseFloat(s.temp.toFixed(1)),humidity:Math.round(s.hum),altitude:s.alt,timestamp:Date.now()},
-    system_goal:'تشخيص أمراض القمح من عدة نقاط في الحقل'
-  };
-
-  const fd=new FormData();
-  withImg.forEach((z,i)=>fd.append(`image_${i}`,z.file,`wheat_zone_${z.label}.jpg`));
-  fd.append('context',JSON.stringify(ctx));
-
-  setCh(1,'live','tx',`Sender→Router<br>${withImg.length} images POST…`);
-  setAgent('a0','active','POST → wheatfield.onrender.com/proxy…','sending','run');
-  addLog(`[Band] POST: ${withImg.length} images + context`,'band');
-
-  let raw='',data=null;
-  try{
-    const ctrl=new AbortController();
-    setTimeout(()=>ctrl.abort(),10000);
-    const resp=await fetch(PROXY,{method:'POST',body:fd,signal:ctrl.signal});
-    raw=await resp.text();
-    addLog(`[Band] HTTP ${resp.status}`,'band');
-    try{data=JSON.parse(raw)}catch{data=null}
-    setAgent('a0','done','Sent ✓ Data saved on server','done','done');
-    setCh(1,'done','on','Sender→Router ✓');
-  }catch(err){
-    if(err.name==='AbortError'){
-      // timeout — البيانات محفوظة على السيرفر، نكمل بشكل طبيعي
-      raw='{"status":"saved","note":"timeout — data saved on server"}';
-      data={agent4_output:'Router: data saved ✓',agent5_output:'Analyzer: images at /drone/latest',agent6_output:'Reporter: WheatGuard app can fetch now'};
-      addLog('[Band] Timeout — data saved on server ✓','ok');
-      setAgent('a0','done','Saved ✓ (timeout normal)','done','done');
-      setCh(1,'done','on','Data saved ✓');
-    }else{
-      addLog('[Error] '+err.message,'er');
-      document.getElementById('resArea').innerHTML=`<div style="color:var(--red);font-size:10px;text-align:center">✗ ${err.message}<br><span style="font-size:9px;color:var(--muted)">Check server connection</span></div>`;
-      btn.disabled=false;btn.textContent='📡 Send all zones to Band · إرسال الكل';
-      return;
-    }
+  const ready=zones.filter(z=>z.blob); if(!field||!ready.length) return;
+  $('bLaunch').disabled=true; let bat=100, alt=0;
+  droneMk=L.marker(field.poly[0],{icon:L.divIcon({className:'',html:'<div class="drone">🛸</div>',iconSize:[0,0]}),zIndexOffset:1000}).addTo(map);
+  log('أقلعت الدرون.','hi'); let pos=field.poly[0]; alt=25; $('sAlt').textContent=alt+' م';
+  for(let i=0;i<ready.length;i++){
+    const z=ready[i]; await tween(pos,[z.lat,z.lng],1700,(a,b)=>droneMk.setLatLng([a,b])); pos=[z.lat,z.lng];
+    log(`التُقطت عيّنة النقطة ${z.label}.`,'ok'); bat-=Math.round(8+Math.random()*4); $('sBat').textContent=bat+'%'; $('sCov').textContent=Math.round((i+1)/ready.length*100)+'%'; await sleep(450);
   }
-
-  // ── إكمال Pipeline ──────────────────────────────
-  await dl(400);
-  setAgent('a1','proc','Routing…','running','proc');
-  setCh(2,'live','tx','Router→Analyzer…');
-  addLog('[Agent-4] Routing…','band');
-  await dl(600);
-  setAgent('a1','done','agent4_output ✓','done','done');
-  setCh(2,'done','on','agent4 ✓');
-  await dl(300);
-  setAgent('a2','proc','Analyzing zones…','analyzing','proc');
-  setCh(3,'live','tx','Analyzer→Reporter…');
-  addLog('[Agent-5] Analyzing…','band');
-  await dl(700);
-  setAgent('a2','done','agent5_output ✓','done','done');
-  await dl(300);
-  setAgent('a3','proc','Building report…','reporting','proc');
-  addLog('[Agent-6] Building report…','band');
-  await dl(500);
-  setAgent('a3','done','agent6_output ✓','done','done');
-  setCh(3,'done','on','agent6 ✓');
-  document.getElementById('bbadge').textContent='done ✓';
-  addLog('[Band] Pipeline complete ✓ — WheatGuard fetching data…','ok');
-  showResult(data,raw);
-  btn.disabled=false;
-  btn.textContent='📡 Send all zones to Band · إرسال الكل';
+  log('إرسال الصور والقياسات إلى الخادم…');
+  let tel=await sendToServer(ready,alt);
+  if(tel) log('استلم الخادم البيانات.','ok'); else log('الخادم لا يردّ. سنكمل التحليل على هذا الجهاز.','er');
+  if(!tel){ try{ tel=await openMeteo(field.center[0],field.center[1]); }catch{ tel={temperature:null,humidity:null,wind_kph:null,condition:'غير متاح',gps:{lat:field.center[0],lon:field.center[1]}}; } }
+  tel.altitude=alt; tel.zone=tel.zone||field.name;
+  const spots=ready.map(z=>({label:z.label,lat:z.lat,lng:z.lng,dataUrl:z.dataUrl,zone:z}));
+  log('عادت الدرون. ابدأ الكشف في تبويب «كشف الأمراض».','ok'); $('bLaunch').disabled=false;
+  showTab('guard'); renderGuard(tel,spots,'من رحلة الدرون الحالية'); analyzeAll(spots);
 }
 
-function showResult(data,raw){
-  const fmt=v=>v?(typeof v==='object'?JSON.stringify(v,null,1).slice(0,200):String(v).slice(0,200)):'—';
-  document.getElementById('resArea').innerHTML=`
-<div style="width:100%">
-  <span style="padding:4px 10px;border-radius:6px;font-size:10px;font-weight:600;background:rgba(32,160,144,.15);color:var(--cyan);border:1px solid var(--cyan);display:inline-block;margin-bottom:10px">✓ WheatGuard — Full Field Report</span>
-  <div class="res-grid">
-    <div class="rb"><div class="rbt">⑆ Agent 4 · Router</div><div class="rbv">${fmt(data?.agent4_output)}</div></div>
-    <div class="rb"><div class="rbt">🧠 Agent 5 · Analyzer</div><div class="rbv">${fmt(data?.agent5_output)}</div></div>
-    <div class="rb"><div class="rbt">📄 Agent 6 · Reporter</div><div class="rbv">${fmt(data?.agent6_output)}</div></div>
-  </div>
-  <div class="raw-box">${raw.slice(0,800)}${raw.length>800?'\n…':''}</div>
-</div>`;
+/* ============== النموذج (YOLOv8 ONNX في المتصفح) ============== */
+let sess=null, inSize=640;
+function modelUI(state,msg){
+  $('mDot').className='dot '+(state==='ok'?'on':state==='err'?'off':'');
+  $('mTxt').textContent=state==='ok'?'النموذج جاهز':state==='loading'?'جارٍ تحميل النموذج…':'النموذج غير متاح';
+  $('mSub').textContent=msg||'wheat-disease.onnx';
 }
+async function loadModel(src,name){
+  modelUI('loading'); try{
+    ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/';
+    sess=await ort.InferenceSession.create(src,{executionProviders:['wasm']}); modelUI('ok',name||MODEL_URL);
+  }catch(e){ sess=null; modelUI('err','ضع الملف في public/models/wheat-disease.onnx أو اختره بالزر.'); }
+}
+$('mFile').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; await loadModel(new Uint8Array(await f.arrayBuffer()),f.name); const s=window._lastSpots; if(s) analyzeAll(s); };
+loadModel(MODEL_URL);
+
+function preprocess(img,S){
+  const c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d'); x.fillStyle='rgb(114,114,114)'; x.fillRect(0,0,S,S);
+  const w=img.naturalWidth,h=img.naturalHeight,r=Math.min(S/w,S/h),nw=Math.round(w*r),nh=Math.round(h*r),dx=(S-nw)>>1,dy=(S-nh)>>1;
+  x.drawImage(img,dx,dy,nw,nh); const d=x.getImageData(0,0,S,S).data, f=new Float32Array(3*S*S), n=S*S;
+  for(let i=0;i<n;i++){ f[i]=d[i*4]/255; f[n+i]=d[i*4+1]/255; f[2*n+i]=d[i*4+2]/255; }
+  return {tensor:new ort.Tensor('float32',f,[1,3,S,S]),r,dx,dy,w,h};
+}
+function decode(o,p){
+  const dims=o.dims,data=o.data;
+  if(dims.length===2){ // تصنيف
+    let a=Array.from(data); const s=a.reduce((x,y)=>x+y,0);
+    if(a.some(v=>v<0||v>1)||Math.abs(s-1)>.01){ const m=Math.max(...a),e=a.map(v=>Math.exp(v-m)),t=e.reduce((x,y)=>x+y,0); a=e.map(v=>v/t); }
+    let k=0; a.forEach((v,i)=>{ if(v>a[k]) k=i; }); return {idx:k,conf:a[k],box:null};
+  }
+  let C,N,get; if(dims[1]<dims[2]){ C=dims[1]; N=dims[2]; get=(c,i)=>data[c*N+i]; } else { N=dims[1]; C=dims[2]; get=(c,i)=>data[i*C+c]; }
+  let best={idx:-1,conf:0,box:null};
+  for(let i=0;i<N;i++) for(let c=0;c<C-4;c++){ const s=get(4+c,i); if(s>best.conf){ const cx=get(0,i),cy=get(1,i),w=get(2,i),h=get(3,i);
+    best={idx:c,conf:s,box:[(cx-w/2-p.dx)/p.r,(cy-h/2-p.dy)/p.r,w/p.r,h/p.r]}; } }
+  return best;
+}
+async function infer(img){
+  let err; for(const S of [...new Set([inSize,640,320,224])]){
+    try{ const p=preprocess(img,S), out=await sess.run({[sess.inputNames[0]]:p.tensor}); inSize=S; return decode(out[sess.outputNames[0]],p); }catch(e){ err=e; }
+  } throw err;
+}
+
+/* ============== شاشة الكشف ============== */
+let lastTs=null, pollT=null;
+function renderGuard(t,spots,from){
+  window._lastSpots=spots; $('srcTxt').textContent=from;
+  const v=(x,u)=>x==null?'—':x+u;
+  $('tel').innerHTML=[['الحرارة',v(t.temperature,'°م')],['الرطوبة',v(t.humidity,'%')],['الرياح',v(t.wind_kph&&+(+t.wind_kph).toFixed(1),' كم/س')],['الحالة',t.condition||'—'],['ارتفاع الدرون',v(t.altitude,' م')],['الموقع',t.gps?(+t.gps.lat).toFixed(3)+', '+(+t.gps.lon).toFixed(3):'—']]
+    .map(([a,b])=>`<div class="stat"><span>${a}</span><b>${b}</b></div>`).join('');
+  const r=$('risk'); let m=null;
+  if(t.humidity!=null&&t.temperature!=null){
+    m=(t.humidity>=70&&t.temperature>=10&&t.temperature<=25)?'رطوبة عالية وحرارة معتدلة: ظروف مناسبة للصدأ والبياض الدقيقي. راقب الحقل بعناية.':t.humidity<40?'الجو جاف: خطر الأمراض الفطرية أقل حالياً.':'ظروف الطقس عادية. هذا مؤشر استرشادي ولا يغني عن نتيجة الكشف.';
+  }
+  r.hidden=!m; if(m) r.textContent='مؤشر الطقس: '+m;
+}
+async function analyzeAll(spots){
+  const box=$('cards'); box.innerHTML=''; $('summary').textContent='';
+  let sick=0,done=0;
+  for(const s of spots){
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML=`<canvas></canvas><div class="body"><h4>النقطة ${s.label}</h4><div class="en">جارٍ التحليل…</div></div>`; box.appendChild(card);
+    const img=await loadImg(s.dataUrl), cv=card.querySelector('canvas'), k=Math.min(1,720/img.naturalWidth);
+    cv.width=img.naturalWidth*k; cv.height=img.naturalHeight*k; const x=cv.getContext('2d'); x.drawImage(img,0,0,cv.width,cv.height);
+    let res=null,msg='';
+    if(!sess) msg='النموذج غير محمّل. اختر ملف wheat-disease.onnx من الأعلى.';
+    else{ try{ res=await infer(img); }catch(e){ msg='تعذّر تشغيل النموذج على هذه الصورة.'; } }
+    let state='unk',name='غير مؤكد',en='',tr='',conf='';
+    if(res){
+      if(res.conf>=THRESH&&res.idx>=0){ en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; conf=Math.round(res.conf*100)+'%'; state=en==='Healthy'?'ok':'sick'; if(state==='sick') sick++;
+        if(res.box){ x.strokeStyle=state==='ok'?'#7fbf45':'#d4603f'; x.lineWidth=3; x.strokeRect(res.box[0]*k,res.box[1]*k,res.box[2]*k,res.box[3]*k); } }
+      else{ msg='لم يتأكد النموذج من أي مرض (الثقة أقل من 25%). جرّب صورة أقرب للورقة.'; }
+      done++;
+    }
+    card.querySelector('.body').innerHTML=`<h4>النقطة ${s.label}: ${name}</h4><div class="en">${en}</div><span class="badge ${state}">${conf?('الثقة '+conf):'بلا نتيجة'}</span><p>${tr||msg}</p>`;
+    if(s.zone) setMk(s.zone,state);
+  }
+  if(done) $('summary').textContent=sick?`رُصدت إصابة في ${sick} من ${done} نقاط فحص.`:`لا إصابات مؤكدة في ${done} نقاط فحص.`;
+}
+async function pullServer(manual){
+  try{
+    const r=await fetch(SERVER+'/drone/latest',{cache:'no-store'});
+    if(!r.ok){ if(manual) $('srcTxt').textContent='لا توجد بيانات على الخادم بعد. أطلق الدرون أولاً.'; return; }
+    const j=await r.json(); if(j.timestamp===lastTs&&!manual) return; lastTs=j.timestamp;
+    const spots=(j.images||[]).map((im,i)=>({label:im.spot||'ABCDEF'[i],lat:j.spots?.[i]?.lat,lng:j.spots?.[i]?.lon,dataUrl:im.base64}));
+    if(!spots.length) return;
+    renderGuard(j.telemetry||{},spots,'من الخادم · '+new Date(j.timestamp).toLocaleTimeString('ar-DZ')); analyzeAll(spots);
+  }catch{ if(manual) $('srcTxt').textContent='تعذّر الاتصال بالخادم.'; }
+}
+function togglePoll(){ clearInterval(pollT); if($('poll').checked){ pullServer(); pollT=setInterval(pullServer,5000); } }
 </script>
 </body>
 </html>
