@@ -168,8 +168,8 @@ img.thumb{border:0}
 <div class="wrap">
   <div class="bar">
     <span class="dot" id="mDot"></span>
-    <div class="grow"><strong id="mTxt">النموذج غير محمّل</strong><small id="mSub">wheat-disease.onnx</small></div>
-    <label class="btn">اختر ملف النموذج<input type="file" accept=".onnx" id="mFile" hidden></label>
+    <div class="grow"><strong id="mTxt">النموذج غير محمّل</strong><small id="mSub">wheat-disease.tflite</small></div>
+    <label class="btn">اختر ملف النموذج<input type="file" accept=".tflite,.onnx" id="mFile" hidden></label>
   </div>
   <div class="bar">
     <div class="grow"><strong id="srcTxt">لا توجد بيانات بعد</strong><small>تصل الصور والقياسات من الدرون، أو اسحبها من الخادم.</small></div>
@@ -184,20 +184,39 @@ img.thumb{border:0}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/tf-tflite.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
 <script>
 /* ============== الإعدادات ============== */
 const SERVER = 'https://wheatfield.onrender.com';
-const MODEL_URL = './models/wheat-disease.onnx';      // ضع النموذج هنا: public/models/wheat-disease.onnx
-const LABELS = ['Barley Yellow Dwarf','Healthy','Leaf Rust','Powdery Mildew']; // نفس ترتيب تدريب النموذج
+const MODEL_URLS = ['./models/wheat-disease.tflite','./models/wheat-disease.onnx']; // ضع النموذج في public/models/
+const LABELS = ['Aphid','Black Rust','Blast','Brown Rust','Common Root Rot','Fusarium Head','Leaf Blight','Mildew','Mite','Septoria','Smut','Stem_fly','Tan spot','healthy_wheat','yellow_rust']; // ID 0..14 بنفس ترتيب تدريب النموذج
 const THRESH = 0.25;
-const AR = {'Barley Yellow Dwarf':'تقزم الشعير الأصفر','Healthy':'محصول سليم','Leaf Rust':'صدأ الأوراق','Powdery Mildew':'البياض الدقيقي'};
-const TREAT = {
- 'Barley Yellow Dwarf':'مكافحة حشرات المن الناقلة للفيروس واستخدام أصناف مقاومة.',
- 'Healthy':'استمر في المتابعة الدورية والتسميد المتوازن للحفاظ على جودة المحصول.',
- 'Leaf Rust':'رش مبيدات فطرية تحتوي على التريازول عند ظهور أولى علامات الإصابة.',
- 'Powdery Mildew':'استخدام الكبريت الميكروني أو مبيدات فطرية جهازية.'
+const AR = {
+ 'Aphid':'المنّ (حشرة)','Black Rust':'الصدأ الأسود (صدأ الساق)','Blast':'لفحة السنبلة (البلاست)','Brown Rust':'الصدأ البني (صدأ الأوراق)',
+ 'Common Root Rot':'تعفن الجذور الشائع','Fusarium Head':'لفحة السنبلة الفيوزارية','Leaf Blight':'لفحة الأوراق','Mildew':'البياض الدقيقي',
+ 'Mite':'الحلم (آفة)','Septoria':'تبقع السبتوريا','Smut':'التفحم','Stem_fly':'ذبابة الساق (حشرة)','Tan spot':'التبقع البني (Tan spot)',
+ 'healthy_wheat':'قمح سليم','yellow_rust':'الصدأ الأصفر'
 };
+const TREAT = {
+ 'Aphid':'راقب كثافة المنّ، واستعمل الأعداء الحيويين أو مبيداً حشرياً مرخّصاً عند تجاوز عتبة الضرر.',
+ 'Black Rust':'رشّ مبيداً فطرياً من مجموعة التريازول عند ظهور أولى البثرات، وفضّل الأصناف المقاومة.',
+ 'Blast':'استعمل مبيداً فطرياً مناسباً، وتجنّب الرطوبة العالية والكثافة الزائدة في الزراعة.',
+ 'Brown Rust':'رشّ مبيدات فطرية تحتوي على التريازول عند ظهور أولى علامات الإصابة.',
+ 'Common Root Rot':'اعتمد تناوباً زراعياً، وحسّن الصرف، وعالج البذور بمبيد فطري قبل الزراعة.',
+ 'Fusarium Head':'عالج بمبيد فطري وقت التزهير، وتخلّص من بقايا المحصول السابق وبدّل المحاصيل.',
+ 'Leaf Blight':'رشّ مبيداً فطرياً عند بداية الأعراض، وتجنّب الريّ الذي يبلل الأوراق.',
+ 'Mildew':'استخدم الكبريت الميكروني أو مبيدات فطرية جهازية.',
+ 'Mite':'استعمل مبيداً أكاروسياً مرخّصاً، وخفّف إجهاد الجفاف عن النبات.',
+ 'Septoria':'رشّ مبيداً فطرياً مناسباً، وبدّل المحاصيل، واختر أصنافاً أقل حساسية.',
+ 'Smut':'عالج البذور بمبيد فطري، واستعمل بذوراً نظيفة معتمدة.',
+ 'Stem_fly':'ازرع في الموعد المناسب، وتابع الحقل، وعالج بمبيد حشري مرخّص عند الحاجة.',
+ 'Tan spot':'رشّ مبيداً فطرياً، وبدّل المحاصيل، وأدِر بقايا القش لتقليل مصدر العدوى.',
+ 'healthy_wheat':'استمر في المتابعة الدورية والتسميد المتوازن للحفاظ على جودة المحصول.',
+ 'yellow_rust':'رشّ مبيدات فطرية من مجموعة التريازول عند أولى الأعراض، وفضّل الأصناف المقاومة.'
+};
+const isHealthy = n => /^healthy/i.test(n||'');
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clock = () => new Date().toTimeString().slice(0,5);
@@ -368,28 +387,45 @@ async function launch(){
   showTab('guard'); renderGuard(tel,spots,'من رحلة الدرون الحالية'); analyzeAll(spots);
 }
 
-/* ============== النموذج (YOLOv8 ONNX في المتصفح) ============== */
+/* ============== النموذج (TFLite أو ONNX داخل المتصفح) ============== */
 let sess=null, inSize=640;
 function modelUI(state,msg){
   $('mDot').className='dot '+(state==='ok'?'on':state==='err'?'off':'');
   $('mTxt').textContent=state==='ok'?'النموذج جاهز':state==='loading'?'جارٍ تحميل النموذج…':'النموذج غير متاح';
-  $('mSub').textContent=msg||'wheat-disease.onnx';
+  $('mSub').textContent=msg||'wheat-disease.tflite';
 }
 async function loadModel(src,name){
-  modelUI('loading'); try{
-    ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/';
-    sess=await ort.InferenceSession.create(src,{executionProviders:['wasm']}); modelUI('ok',name||MODEL_URL);
-  }catch(e){ sess=null; modelUI('err','ضع الملف في public/models/wheat-disease.onnx أو اختره بالزر.'); }
+  modelUI('loading');
+  const tfl=String(name||src).toLowerCase().endsWith('.tflite');
+  try{
+    if(tfl){
+      tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/');
+      const m=await tflite.loadTFLiteModel(src), inp=m.inputs[0];
+      if(inp.dtype&&inp.dtype!=='float32') throw new Error('quantized');
+      const sh=inp.shape||[1,640,640,3], chw=sh[1]===3; inSize=chw?sh[2]:sh[1];
+      sess={type:'tflite',m,chw};
+    }else{
+      ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/';
+      sess={type:'onnx',s:await ort.InferenceSession.create(src,{executionProviders:['wasm']})};
+    }
+    modelUI('ok',name||String(src)); return true;
+  }catch(e){
+    sess=null;
+    modelUI('err',String(e.message).includes('quantized')?'النموذج مكمَّم (int8) ولا يعمل في المتصفح. صدّره بصيغة float32 أو ONNX.':'ضع الملف في public/models/wheat-disease.tflite أو اختره بالزر.');
+    return false;
+  }
 }
-$('mFile').onchange=async e=>{ const f=e.target.files[0]; if(!f) return; await loadModel(new Uint8Array(await f.arrayBuffer()),f.name); const s=window._lastSpots; if(s) analyzeAll(s); };
-loadModel(MODEL_URL);
+$('mFile').onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return; const buf=await f.arrayBuffer();
+  await loadModel(f.name.toLowerCase().endsWith('.tflite')?buf:new Uint8Array(buf),f.name);
+  const sp=window._lastSpots; if(sp) analyzeAll(sp);
+};
+(async()=>{ for(const u of MODEL_URLS){ if(await loadModel(u,u)) return; } })();
 
-function preprocess(img,S){
+function prep(img,S){
   const c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d'); x.fillStyle='rgb(114,114,114)'; x.fillRect(0,0,S,S);
   const w=img.naturalWidth,h=img.naturalHeight,r=Math.min(S/w,S/h),nw=Math.round(w*r),nh=Math.round(h*r),dx=(S-nw)>>1,dy=(S-nh)>>1;
-  x.drawImage(img,dx,dy,nw,nh); const d=x.getImageData(0,0,S,S).data, f=new Float32Array(3*S*S), n=S*S;
-  for(let i=0;i<n;i++){ f[i]=d[i*4]/255; f[n+i]=d[i*4+1]/255; f[2*n+i]=d[i*4+2]/255; }
-  return {tensor:new ort.Tensor('float32',f,[1,3,S,S]),r,dx,dy,w,h};
+  x.drawImage(img,dx,dy,nw,nh); return {d:x.getImageData(0,0,S,S).data,S,r,dx,dy};
 }
 function decode(o,p){
   const dims=o.dims,data=o.data;
@@ -400,13 +436,27 @@ function decode(o,p){
   }
   let C,N,get; if(dims[1]<dims[2]){ C=dims[1]; N=dims[2]; get=(c,i)=>data[c*N+i]; } else { N=dims[1]; C=dims[2]; get=(c,i)=>data[i*C+c]; }
   let best={idx:-1,conf:0,box:null};
-  for(let i=0;i<N;i++) for(let c=0;c<C-4;c++){ const s=get(4+c,i); if(s>best.conf){ const cx=get(0,i),cy=get(1,i),w=get(2,i),h=get(3,i);
+  for(let i=0;i<N;i++) for(let c=0;c<C-4;c++){ const s=get(4+c,i); if(s>best.conf){ let cx=get(0,i),cy=get(1,i),w=get(2,i),h=get(3,i); const kk=Math.max(cx,cy,w,h)<=1.5?p.S:1; cx*=kk; cy*=kk; w*=kk; h*=kk;
     best={idx:c,conf:s,box:[(cx-w/2-p.dx)/p.r,(cy-h/2-p.dy)/p.r,w/p.r,h/p.r]}; } }
   return best;
 }
 async function infer(img){
-  let err; for(const S of [...new Set([inSize,640,320,224])]){
-    try{ const p=preprocess(img,S), out=await sess.run({[sess.inputNames[0]]:p.tensor}); inSize=S; return decode(out[sess.outputNames[0]],p); }catch(e){ err=e; }
+  if(sess.type==='tflite'){
+    const p=prep(img,inSize), n=p.S*p.S, f=new Float32Array(n*3);
+    if(sess.chw){ for(let i=0;i<n;i++){ f[i]=p.d[i*4]/255; f[n+i]=p.d[i*4+1]/255; f[2*n+i]=p.d[i*4+2]/255; } }
+    else{ for(let i=0;i<n;i++){ f[i*3]=p.d[i*4]/255; f[i*3+1]=p.d[i*4+1]/255; f[i*3+2]=p.d[i*4+2]/255; } }
+    const t=tf.tensor4d(f,sess.chw?[1,3,p.S,p.S]:[1,p.S,p.S,3]); let out=sess.m.predict(t);
+    if(!(out instanceof tf.Tensor)) out=Array.isArray(out)?out[0]:Object.values(out)[0];
+    const o={dims:out.shape,data:await out.data()}; t.dispose(); out.dispose(); return decode(o,p);
+  }
+  let err;
+  for(const S of [...new Set([inSize,640,320,224])]){
+    try{
+      const p=prep(img,S), n=S*S, f=new Float32Array(3*n);
+      for(let i=0;i<n;i++){ f[i]=p.d[i*4]/255; f[n+i]=p.d[i*4+1]/255; f[2*n+i]=p.d[i*4+2]/255; }
+      const out=await sess.s.run({[sess.s.inputNames[0]]:new ort.Tensor('float32',f,[1,3,S,S])}); inSize=S;
+      return decode(out[sess.s.outputNames[0]],p);
+    }catch(e){ err=e; }
   } throw err;
 }
 
@@ -432,11 +482,11 @@ async function analyzeAll(spots){
     const img=await loadImg(s.dataUrl), cv=card.querySelector('canvas'), k=Math.min(1,720/img.naturalWidth);
     cv.width=img.naturalWidth*k; cv.height=img.naturalHeight*k; const x=cv.getContext('2d'); x.drawImage(img,0,0,cv.width,cv.height);
     let res=null,msg='';
-    if(!sess) msg='النموذج غير محمّل. اختر ملف wheat-disease.onnx من الأعلى.';
+    if(!sess) msg='النموذج غير محمّل. اختر ملف النموذج (tflite) من الأعلى.';
     else{ try{ res=await infer(img); }catch(e){ msg='تعذّر تشغيل النموذج على هذه الصورة.'; } }
     let state='unk',name='غير مؤكد',en='',tr='',conf='';
     if(res){
-      if(res.conf>=THRESH&&res.idx>=0){ en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; conf=Math.round(res.conf*100)+'%'; state=en==='Healthy'?'ok':'sick'; if(state==='sick') sick++;
+      if(res.conf>=THRESH&&res.idx>=0){ en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; conf=Math.round(res.conf*100)+'%'; state=isHealthy(en)?'ok':'sick'; if(state==='sick') sick++;
         if(res.box){ x.strokeStyle=state==='ok'?'#7fbf45':'#d4603f'; x.lineWidth=3; x.strokeRect(res.box[0]*k,res.box[1]*k,res.box[2]*k,res.box[3]*k); } }
       else{ msg='لم يتأكد النموذج من أي مرض (الثقة أقل من 25%). جرّب صورة أقرب للورقة.'; }
       done++;
