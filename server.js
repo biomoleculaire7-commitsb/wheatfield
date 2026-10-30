@@ -1,4 +1,3 @@
-
 const express  = require('express');
 const multer   = require('multer');
 const fetch    = require('node-fetch');
@@ -96,8 +95,8 @@ app.get('/drone/latest', (req, res) => {
 app.post('/proxy', upload.any(), async (req, res) => {
   try {
     const ctx         = JSON.parse(req.body.context || '{}');
-    const lat         = ctx.spots?.[0]?.lat || FIELD_LAT;
-    const lon         = ctx.spots?.[0]?.lon || FIELD_LON;
+    const lat         = ctx.field?.center?.[0] || ctx.spots?.[0]?.lat || FIELD_LAT;
+    const lon         = ctx.field?.center?.[1] || ctx.spots?.[0]?.lon || FIELD_LON;
     const realWeather = await getRealWeather(lat, lon);
 
     const images = (req.files || []).map((f, i) => ({
@@ -110,6 +109,7 @@ app.post('/proxy', upload.any(), async (req, res) => {
     const latest = {
       source     : ctx.source      || 'WheatField',
       image_count: images.length,
+      field      : ctx.field       || null,
       spots      : ctx.spots       || [],
       telemetry,
       images,
