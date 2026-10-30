@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>حقل القمح — الدرون والكشف عن الأمراض</title>
+<title>WheatField و WheatGuard</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Reem+Kufi:wght@600&display=swap" rel="stylesheet">
 <style>
@@ -102,10 +102,10 @@ img.thumb{border:0}
 </head>
 <body>
 <header>
-  <div class="brand">حقل القمح<small>الدرون والكشف عن أمراض القمح</small></div>
+  <div class="brand">WheatField · WheatGuard<small>درون المسح وكشف أمراض القمح</small></div>
   <nav>
-    <button id="nb-field" class="on" onclick="showTab('field')">حقلي والدرون</button>
-    <button id="nb-guard" onclick="showTab('guard')">كشف الأمراض</button>
+    <button id="nb-field" class="on" onclick="showTab('field')">WheatField · الدرون</button>
+    <button id="nb-guard" onclick="showTab('guard')">WheatGuard · كشف الأمراض</button>
   </nav>
   <div class="srv"><span class="dot" id="srvDot"></span><span id="srvTxt">فحص الخادم…</span></div>
 </header>
@@ -138,24 +138,25 @@ img.thumb{border:0}
 
     <div class="step">
       <h3><b>2</b>نقاط الفحص</h3>
-      <p>يوزّع التطبيق نقاط الفحص داخل حقلك. ارفع صورة أو فيديو لكل نقطة.</p>
+      <p>وزّع نقاط الفحص داخل حقلك، ثم ارفع صورة أو فيديو لكل نقطة: اضغط زر «رفع» في بطاقة النقطة، أو ارفع كل الصور دفعة واحدة وتُوزَّع بالترتيب (A ثم B…).</p>
       <div class="row">
         <select id="nZones" class="field-in" style="width:auto" aria-label="عدد النقاط">
           <option value="2">2 نقطتان</option><option value="3">3 نقاط</option><option value="4" selected>4 نقاط</option><option value="5">5 نقاط</option><option value="6">6 نقاط</option>
         </select>
         <button class="btn" id="bGen" onclick="genZones()" disabled>وزّع النقاط</button>
       </div>
+      <label class="btn" style="display:inline-block;margin-top:10px">ارفع صور كل النقاط دفعة واحدة<input type="file" id="bulk" accept="image/*,video/*" multiple hidden></label>
       <div class="zones" id="zones"></div>
     </div>
 
     <div class="step">
-      <h3><b>3</b>أرسل الدرون</h3>
+      <h3><b>3</b>أرسل درون WheatField</h3>
       <div class="stats">
         <div class="stat"><span>الارتفاع</span><b id="sAlt">0 م</b></div>
         <div class="stat"><span>البطارية</span><b id="sBat">100%</b></div>
         <div class="stat"><span>المسح</span><b id="sCov">0%</b></div>
       </div>
-      <button class="btn main" id="bLaunch" onclick="launch()" disabled>أطلق الدرون وحلّل الحقل</button>
+      <button class="btn main" id="bLaunch" onclick="launch()" disabled>أطلق الدرون وأرسل الصور إلى WheatGuard</button>
       <div class="log" id="log"><div>ارسم حقلك على الخريطة للبدء.</div></div>
     </div>
   </aside>
@@ -178,7 +179,7 @@ img.thumb{border:0}
   <div class="tel" id="tel"></div>
   <div class="risk" id="risk" hidden></div>
   <div class="summary" id="summary"></div>
-  <div class="cards" id="cards"><div class="empty" style="grid-column:1/-1">أطلق الدرون من تبويب «حقلي والدرون» أو استقبل آخر بيانات من الخادم لتبدأ عملية الكشف.</div></div>
+  <div class="cards" id="cards"><div class="empty" style="grid-column:1/-1">أطلق الدرون من تبويب WheatField أو استقبل آخر بيانات من الخادم لتبدأ عملية الكشف.</div></div>
 </div>
 </div>
 
@@ -303,10 +304,10 @@ function renderZones(){
   const box=$('zones'); box.innerHTML='';
   zones.forEach((z,i)=>{
     const d=document.createElement('div'); d.className='zone'+(z.blob?' has':'');
-    const th=z.dataUrl?`<img class="thumb" src="${z.dataUrl}" alt="النقطة ${z.label}">`:`<div class="thumb">ارفع صورة أو فيديو</div>`;
-    d.innerHTML=`${th}<div><strong>النقطة ${z.label}</strong><small>${z.lat.toFixed(5)}, ${z.lng.toFixed(5)}</small></div><button class="x" aria-label="إزالة الملف" title="إزالة الملف">×</button>`;
+    const th=z.dataUrl?`<img class="thumb" src="${z.dataUrl}" alt="النقطة ${z.label}">`:`<div class="thumb">اضغط لرفع صورة أو فيديو</div>`;
+    d.innerHTML=`${th}<div><strong>النقطة ${z.label}</strong><small>${z.lat.toFixed(5)}, ${z.lng.toFixed(5)}</small></div><div class="row" style="gap:2px"><button class="btn up" style="padding:6px 12px">رفع</button><button class="x" aria-label="إزالة الملف" title="إزالة الملف">×</button></div>`;
     const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,video/*'; inp.hidden=true; d.appendChild(inp);
-    d.querySelector('.thumb').onclick=()=>inp.click();
+    d.querySelector('.thumb').onclick=()=>inp.click(); d.querySelector('.up').onclick=()=>inp.click();
     inp.onchange=async()=>{ if(!inp.files[0]) return; try{ const r=await mediaToJpeg(inp.files[0]); z.blob=r.blob; z.dataUrl=r.dataUrl; setMk(z,'has'); log(`النقطة ${z.label}: الملف جاهز.`,'ok'); }catch{ log('تعذّر قراءة الملف. جرّب صورة JPG أو فيديو MP4.','er'); } renderZones(); };
     d.querySelector('.x').onclick=()=>{ z.blob=null; z.dataUrl=null; setMk(z,''); renderZones(); };
     box.appendChild(d);
@@ -363,7 +364,7 @@ async function launch(){
   if(!tel){ try{ tel=await openMeteo(field.center[0],field.center[1]); }catch{ tel={temperature:null,humidity:null,wind_kph:null,condition:'غير متاح',gps:{lat:field.center[0],lon:field.center[1]}}; } }
   tel.altitude=alt; tel.zone=tel.zone||field.name;
   const spots=ready.map(z=>({label:z.label,lat:z.lat,lng:z.lng,dataUrl:z.dataUrl,zone:z}));
-  log('عادت الدرون. ابدأ الكشف في تبويب «كشف الأمراض».','ok'); $('bLaunch').disabled=false;
+  log('عادت الدرون. يبدأ WheatGuard الكشف الآن.','ok'); $('bLaunch').disabled=false;
   showTab('guard'); renderGuard(tel,spots,'من رحلة الدرون الحالية'); analyzeAll(spots);
 }
 
@@ -456,6 +457,16 @@ async function pullServer(manual){
   }catch{ if(manual) $('srcTxt').textContent='تعذّر الاتصال بالخادم.'; }
 }
 function togglePoll(){ clearInterval(pollT); if($('poll').checked){ pullServer(); pollT=setInterval(pullServer,5000); } }
+$('bulk').onchange=async e=>{
+  const fs=[...e.target.files]; e.target.value='';
+  if(!zones.length){ log('وزّع نقاط الفحص أولاً ثم ارفع الصور.','er'); return; }
+  for(const f of fs){
+    const z=zones.find(z=>!z.blob); if(!z){ log('كل النقاط لها ملفات. زِد عدد النقاط لرفع المزيد.','hi'); break; }
+    try{ const r=await mediaToJpeg(f); z.blob=r.blob; z.dataUrl=r.dataUrl; setMk(z,'has'); log(`النقطة ${z.label}: ${f.name}`,'ok'); }
+    catch{ log('تعذّر قراءة الملف '+f.name,'er'); }
+  }
+  renderZones();
+};
 </script>
 </body>
 </html>
