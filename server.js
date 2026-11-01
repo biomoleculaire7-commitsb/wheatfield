@@ -17,6 +17,8 @@ const DATA_FILE  = path.join('/tmp', 'drone_latest.json');
 
 app.use(cors());
 app.use(express.json());
+// النموذج ثقيل: يُخزَّن في المتصفح أسبوعاً فلا يُحمَّل في كل زيارة
+app.use('/models', express.static(path.join(__dirname, 'public', 'models'), { maxAge: '7d' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 let weatherCache = null;
