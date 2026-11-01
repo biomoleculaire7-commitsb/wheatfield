@@ -184,13 +184,11 @@ img.thumb{border:0}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/tf-tflite.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
 <script>
 /* ============== الإعدادات ============== */
 const SERVER = 'https://wheatfield.onrender.com';
-const MODEL_URLS = ['./models/wheat-disease.tflite','./models/wheat-disease.onnx']; // ضع النموذج في public/models/
+const MODEL_URLS = ['./models/wheat-disease.onnx','./models/wheat-disease.tflite']; // ضع النموذج في public/models/
 const LABELS = ['Aphid','Black Rust','Blast','Brown Rust','Common Root Rot','Fusarium Head','Leaf Blight','Mildew','Mite','Septoria','Smut','Stem_fly','Tan spot','healthy_wheat','yellow_rust']; // ID 0..14 بنفس ترتيب تدريب النموذج
 const THRESH = 0.25;
 const AR = {
@@ -388,7 +386,13 @@ async function launch(){
 }
 
 /* ============== النموذج (TFLite أو ONNX داخل المتصفح) ============== */
-let sess=null, inSize=640;
+let sess=null, inSize=640, lastErr='';
+const loadScript=u=>new Promise((res,rej)=>{ const e=document.createElement('script'); e.src=u; e.onload=res; e.onerror=()=>rej(new Error('تعذّر تحميل '+u)); document.head.appendChild(e); });
+async function ensureTflite(){
+  if(window.tflite&&window.tf) return;
+  await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/tf-tflite.min.js');
+}
 function modelUI(state,msg){
   $('mDot').className='dot '+(state==='ok'?'on':state==='err'?'off':'');
   $('mTxt').textContent=state==='ok'?'النموذج جاهز':state==='loading'?'جارٍ تحميل النموذج…':'النموذج غير متاح';
@@ -399,6 +403,7 @@ async function loadModel(src,name){
   const tfl=String(name||src).toLowerCase().endsWith('.tflite');
   try{
     if(tfl){
+      await ensureTflite();
       tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.10/dist/');
       const m=await tflite.loadTFLiteModel(src), inp=m.inputs[0];
       if(inp.dtype&&inp.dtype!=='float32') throw new Error('quantized');
@@ -410,8 +415,10 @@ async function loadModel(src,name){
     }
     modelUI('ok',name||String(src)); return true;
   }catch(e){
-    sess=null;
-    modelUI('err',String(e.message).includes('quantized')?'النموذج مكمَّم (int8) ولا يعمل في المتصفح. صدّره بصيغة float32 أو ONNX.':'ضع الملف في public/models/wheat-disease.tflite أو اختره بالزر.');
+    sess=null; console.error('تحميل النموذج فشل:',src,e);
+    const m=String((e&&e.message)||e).slice(0,160);
+    lastErr=m.includes('quantized')?'النموذج مكمَّم (int8) ولا يعمل في المتصفح.':m;
+    modelUI('err',lastErr);
     return false;
   }
 }
@@ -420,7 +427,7 @@ $('mFile').onchange=async e=>{
   await loadModel(f.name.toLowerCase().endsWith('.tflite')?buf:new Uint8Array(buf),f.name);
   const sp=window._lastSpots; if(sp) analyzeAll(sp);
 };
-(async()=>{ for(const u of MODEL_URLS){ if(await loadModel(u,u)) return; } })();
+(async()=>{ let first=''; for(const u of MODEL_URLS){ if(await loadModel(u,u)) return; if(!first) first=lastErr; } modelUI('err',first); })();
 
 function prep(img,S){
   const c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d'); x.fillStyle='rgb(114,114,114)'; x.fillRect(0,0,S,S);
