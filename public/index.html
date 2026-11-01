@@ -450,7 +450,7 @@ $('mFile').onchange=async e=>{
 (async()=>{
   let first=''; for(const u of MODEL_URLS){ if(await loadModel(u,u)) return; if(!first) first=lastErr; }
   const um=await getUserModel();
-  if(um&&await loadModel(um.name.toLowerCase().endsWith('.tflite')?um.buf:new Uint8Array(um.buf),um.name)){ modelUI('ok',um.name+' (محفوظ في هذا المتصفح)'); return; }
+  if(um&&await loadModel(um.name.toLowerCase().endsWith('.tflite')?um.buf:new Uint8Array(um.buf),um.name)){ modelUI('ok',um.name+' (محفوظ في هذا المتصفح فقط — فشل التحميل من الخادم: '+first+')'); return; }
   modelUI('err',first);
 })();
 
