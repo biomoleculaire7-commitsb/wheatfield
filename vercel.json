@@ -1,10 +1,11 @@
+
 {
-  "version": 2,
-  "builds": [
-    { "src": "server.js", "use": "@vercel/node" }
-  ],
-  "routes": [
-    { "src": "/proxy", "dest": "/server.js" },
-    { "src": "/(.*)", "dest": "/public/$1" }
+  "framework": null,
+  "outputDirectory": "public",
+  "headers": [
+    {
+      "source": "/models/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
+    }
   ]
 }
