@@ -98,6 +98,21 @@ img.thumb{border:0}
 .empty{text-align:center;color:var(--dim);padding:50px 10px;border:1px dashed var(--line);border-radius:12px}
 @media(max-width:900px){.layout{grid-template-columns:1fr}.mapbox{height:60vh}aside{max-height:none;border-inline-start:0;border-top:1px solid var(--line)}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+dialog{background:var(--soil2);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(380px,92vw);margin:auto}
+dialog::backdrop{background:rgba(0,0,0,.65)}
+dialog h3{margin-bottom:6px}dialog p{color:var(--dim);font-size:14px;margin-bottom:12px}
+dialog .field-in{margin-bottom:10px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--soil3);border:1px solid var(--line);padding:10px 18px;border-radius:10px;z-index:3000;display:none;max-width:92vw;text-align:center}
+.hrows{display:grid;gap:8px}
+.hrow{display:flex;gap:10px;align-items:center;background:var(--soil2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;flex-wrap:wrap}
+.hrow .grow{flex:1;min-width:200px}.hrow small{display:block;color:var(--dim);font-size:13px}
+.hdot{width:12px;height:12px;border-radius:50%;flex:none}
+.card img.ph{width:100%;display:block;background:#000}
+.cmp{width:100%;border-collapse:collapse;margin-top:12px;background:var(--soil2);border-radius:10px;overflow:hidden}
+.cmp th,.cmp td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:right}
+.cmp th{color:var(--dim);font-weight:500;font-size:13px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--dim);font-size:13px;margin:10px 0}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-inline-end:5px}
 </style>
 </head>
 <body>
@@ -106,7 +121,9 @@ img.thumb{border:0}
   <nav>
     <button id="nb-field" class="on" onclick="showTab('field')">WheatField · الدرون</button>
     <button id="nb-guard" onclick="showTab('guard')">WheatGuard · كشف الأمراض</button>
+    <button id="nb-hist" onclick="showTab('hist')">سجل الرحلات</button>
   </nav>
+  <button class="chip" id="authBtn" onclick="openAuth()" hidden>تسجيل الدخول</button>
   <div class="srv"><span class="dot" id="srvDot"></span><span id="srvTxt">فحص الخادم…</span></div>
 </header>
 
@@ -133,6 +150,7 @@ img.thumb{border:0}
       <h3><b>1</b>حدد حقلك</h3>
       <p>قرّب الخريطة من أرضك وارسم حدودها بالنقر على زواياها.</p>
       <input class="field-in" id="fname" placeholder="اسم الحقل (مثال: حقل الوادي)">
+      <select id="myFields" class="field-in" style="margin-top:8px" hidden onchange="pickMyField(this.value)" aria-label="حقولي المحفوظة"><option value="">حقولي المحفوظة…</option></select>
       <div class="info"><span>المساحة: <b id="iArea">—</b></span><span>الإحداثيات: <b id="iCenter" style="direction:ltr;display:inline-block">—</b></span></div>
     </div>
 
@@ -179,9 +197,36 @@ img.thumb{border:0}
   <div class="tel" id="tel"></div>
   <div class="risk" id="risk" hidden></div>
   <div class="summary" id="summary"></div>
+  <button class="btn" id="bReport" hidden onclick="makeReport()" style="margin-bottom:14px">تقرير للطباعة / حفظ PDF</button>
   <div class="cards" id="cards"><div class="empty" style="grid-column:1/-1">أطلق الدرون من تبويب WheatField أو استقبل آخر بيانات من الخادم لتبدأ عملية الكشف.</div></div>
 </div>
 </div>
+
+<div id="tab-hist" class="tab">
+<div class="wrap">
+  <div class="bar">
+    <div class="grow"><strong>سجل الرحلات</strong><small id="hSub">سجّل الدخول لحفظ رحلاتك ومقارنتها.</small></div>
+    <select id="hField" class="field-in" style="width:auto;min-width:190px" onchange="loadFlights()" aria-label="الحقل"></select>
+    <button class="btn" id="hOpen" onclick="openFieldOnMap()" hidden>افتح الحقل على الخريطة</button>
+    <button class="btn" id="hDel" onclick="delField()" hidden>حذف الحقل</button>
+  </div>
+  <div class="legend"><span><i style="background:#7fbf45"></i>لا إصابات</span><span><i style="background:#dcae3c"></i>حتى 25% من النقاط مصابة</span><span><i style="background:#d4603f"></i>أكثر من 25%</span><span>(تقدير من عيّنات الفحص وليس مسحاً كاملاً)</span></div>
+  <div id="hList"></div>
+  <div id="hDetail"></div>
+</div>
+</div>
+
+<dialog id="authDlg">
+  <h3>تسجيل الدخول</h3>
+  <p>حسابك يحفظ حقولك ورحلاتك وصورك ويفصلها عن غيرك.</p>
+  <form onsubmit="event.preventDefault();authDo('in')">
+    <input class="field-in" id="aEmail" type="email" placeholder="البريد الإلكتروني" autocomplete="email" required style="direction:ltr;text-align:right">
+    <input class="field-in" id="aPass" type="password" placeholder="كلمة المرور (6 أحرف على الأقل)" autocomplete="current-password" minlength="6" required style="direction:ltr;text-align:right">
+    <div id="aMsg" style="color:var(--wheat);font-size:14px;min-height:22px;margin-bottom:8px"></div>
+    <div class="row"><button class="btn main" style="flex:1">دخول</button><button type="button" class="btn" onclick="authDo('up')">حساب جديد</button><button type="button" class="btn" onclick="$('authDlg').close()">إغلاق</button></div>
+  </form>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
@@ -220,8 +265,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clock = () => new Date().toTimeString().slice(0,5);
 function log(m, c=''){ const d=document.createElement('div'); d.className=c; d.textContent=clock()+'  '+m; const L=$('log'); L.prepend(d); }
 function showTab(n){
-  ['field','guard'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
+  ['field','guard','hist'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
   if(n==='field') setTimeout(()=>map.invalidateSize(),50);
+  if(n==='hist') renderHistTab();
 }
 
 /* ============== حالة الخادم ============== */
@@ -368,6 +414,7 @@ async function sendToServer(ready,alt){
 function tween(a,b,ms,cb){ return new Promise(res=>{ const t0=performance.now(); (function s(t){ const k=Math.min(1,(t-t0)/ms); cb(a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k); k<1?requestAnimationFrame(s):res(); })(t0); }); }
 async function launch(){
   const ready=zones.filter(z=>z.blob); if(!field||!ready.length) return;
+  field.name=$('fname').value.trim()||field.name||'حقلي';
   $('bLaunch').disabled=true; let bat=100, alt=0;
   droneMk=L.marker(field.poly[0],{icon:L.divIcon({className:'',html:'<div class="drone">🛸</div>',iconSize:[0,0]}),zIndexOffset:1000}).addTo(map);
   log('أقلعت الدرون.','hi'); let pos=field.poly[0]; alt=25; $('sAlt').textContent=alt+' م';
@@ -382,7 +429,8 @@ async function launch(){
   tel.altitude=alt; tel.zone=tel.zone||field.name;
   const spots=ready.map(z=>({label:z.label,lat:z.lat,lng:z.lng,dataUrl:z.dataUrl,zone:z}));
   log('عادت الدرون. يبدأ WheatGuard الكشف الآن.','ok'); $('bLaunch').disabled=false;
-  showTab('guard'); renderGuard(tel,spots,'من رحلة الدرون الحالية'); analyzeAll(spots);
+  const fctx={name:field.name,poly:field.poly,area_ha:field.area_ha,center:field.center};
+  showTab('guard'); renderGuard(tel,spots,'من رحلة الدرون الحالية'); analyzeAll(spots,{save:true,tel,fieldCtx:fctx});
 }
 
 /* ============== النموذج (TFLite أو ONNX داخل المتصفح) ============== */
@@ -495,7 +543,7 @@ async function infer(img){
 /* ============== شاشة الكشف ============== */
 let lastTs=null, pollT=null;
 function renderGuard(t,spots,from){
-  window._lastSpots=spots; $('srcTxt').textContent=from;
+  window._lastSpots=spots; window._lastTel=t; $('srcTxt').textContent=from;
   const v=(x,u)=>x==null?'—':x+u;
   $('tel').innerHTML=[['الحرارة',v(t.temperature,'°م')],['الرطوبة',v(t.humidity,'%')],['الرياح',v(t.wind_kph&&+(+t.wind_kph).toFixed(1),' كم/س')],['الحالة',t.condition||'—'],['ارتفاع الدرون',v(t.altitude,' م')],['الموقع',t.gps?(+t.gps.lat).toFixed(3)+', '+(+t.gps.lon).toFixed(3):'—']]
     .map(([a,b])=>`<div class="stat"><span>${a}</span><b>${b}</b></div>`).join('');
@@ -505,9 +553,9 @@ function renderGuard(t,spots,from){
   }
   r.hidden=!m; if(m) r.textContent='مؤشر الطقس: '+m;
 }
-async function analyzeAll(spots){
-  const box=$('cards'); box.innerHTML=''; $('summary').textContent='';
-  let sick=0,done=0;
+async function analyzeAll(spots,opts){
+  const box=$('cards'); box.innerHTML=''; $('summary').textContent=''; $('bReport').hidden=true;
+  let sick=0,healthy=0,unk=0;
   for(const s of spots){
     const card=document.createElement('div'); card.className='card';
     card.innerHTML=`<canvas></canvas><div class="body"><h4>النقطة ${s.label}</h4><div class="en">جارٍ التحليل…</div></div>`; box.appendChild(card);
@@ -516,17 +564,25 @@ async function analyzeAll(spots){
     let res=null,msg='';
     if(!sess) msg='النموذج غير محمّل. اختر ملف النموذج (tflite) من الأعلى.';
     else{ try{ res=await infer(img); }catch(e){ msg='تعذّر تشغيل النموذج على هذه الصورة.'; } }
-    let state='unk',name='غير مؤكد',en='',tr='',conf='';
+    let state='unk',name='غير مؤكد',en='',tr='',conf='',cnum=null;
     if(res){
-      if(res.conf>=THRESH&&res.idx>=0){ en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; conf=Math.round(res.conf*100)+'%'; state=isHealthy(en)?'ok':'sick'; if(state==='sick') sick++;
-        if(res.box){ x.strokeStyle=state==='ok'?'#7fbf45':'#d4603f'; x.lineWidth=3; x.strokeRect(res.box[0]*k,res.box[1]*k,res.box[2]*k,res.box[3]*k); } }
-      else{ msg='لم يتأكد النموذج من أي مرض (الثقة أقل من 25%). جرّب صورة أقرب للورقة.'; }
-      done++;
+      if(res.conf>=THRESH&&res.idx>=0){
+        en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; cnum=res.conf; conf=Math.round(res.conf*100)+'%';
+        state=isHealthy(en)?'ok':'sick'; if(state==='sick') sick++; else healthy++;
+        if(res.box){ x.strokeStyle=state==='ok'?'#7fbf45':'#d4603f'; x.lineWidth=3; x.strokeRect(res.box[0]*k,res.box[1]*k,res.box[2]*k,res.box[3]*k); }
+      }else{ msg='لم يتأكد النموذج من أي مرض (الثقة أقل من 25%). جرّب صورة أقرب للورقة.'; unk++; }
     }
+    s.res={en,name,conf:cnum,state,box:(res&&state!=='unk'&&res.box)?res.box.map(v=>Math.round(v)):null};
     card.querySelector('.body').innerHTML=`<h4>النقطة ${s.label}: ${name}</h4><div class="en">${en}</div><span class="badge ${state}">${conf?('الثقة '+conf):'بلا نتيجة'}</span><p>${tr||msg}</p>`;
     if(s.zone) setMk(s.zone,state);
   }
-  if(done) $('summary').textContent=sick?`رُصدت إصابة في ${sick} من ${done} نقاط فحص.`:`لا إصابات مؤكدة في ${done} نقاط فحص.`;
+  const n=sick+healthy+unk;
+  if(n){
+    $('summary').textContent=(sick?`رُصدت إصابة في ${sick} من ${n} نقاط فحص.`:healthy?`لا إصابات مؤكدة في ${n} نقاط فحص.`:'لم يتأكد النموذج من أي نقطة.')+((unk&&(sick||healthy))?` (${unk} غير مؤكدة)`:'');
+    $('bReport').hidden=false;
+  }
+  window._lastRun={tel:window._lastTel,spots,field:(opts&&opts.fieldCtx)||null};
+  if(opts&&opts.save){ paintField(sick,healthy); saveFlight(spots,opts.tel,{sick,healthy,unk}); }
 }
 async function pullServer(manual){
   try{
@@ -549,6 +605,214 @@ $('bulk').onchange=async e=>{
   }
   renderZones();
 };
+
+/* ============== Supabase: الحسابات والسجل ============== */
+const SUPABASE_URL='';        // مثال: https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY='';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
+let sb=null, user=null, myFields=[], hSel=[];
+const toast=m=>{ const t=$('toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>{ t.style.display='none'; },5000); };
+function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const AUTH_ERR={'Invalid login credentials':'البريد أو كلمة المرور غير صحيحة.','User already registered':'هذا البريد مسجّل. سجّل الدخول بدل إنشاء حساب.','Email not confirmed':'أكّد بريدك من الرسالة التي وصلتك ثم سجّل الدخول.'};
+
+function healthColor(sick,healthy){ const n=sick+healthy; if(!n) return '#9aa889'; const r=sick/n; return r===0?'#7fbf45':r<=0.25?'#dcae3c':'#d4603f'; }
+function paintField(sick,healthy){ if(typeof poly!=='undefined'&&poly){ const c=healthColor(sick,healthy); poly.setStyle({color:c,fillColor:c,fillOpacity:.35}); } }
+
+async function initSupabase(){
+  if(!SUPABASE_URL||!SUPABASE_ANON_KEY){ return; }
+  try{
+    await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js');
+    sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    $('authBtn').hidden=false;
+    const {data}=await sb.auth.getSession(); setUser(data.session?data.session.user:null);
+    sb.auth.onAuthStateChange((_e,sess)=>{ setTimeout(()=>setUser(sess?sess.user:null),0); });
+  }catch(e){ console.error('Supabase',e); }
+}
+function setUser(u){
+  const changed=((u&&u.id)||null)!==((user&&user.id)||null); user=u;
+  $('authBtn').textContent=u?('خروج · '+(u.email||'')).slice(0,30):'تسجيل الدخول';
+  if(changed){ myFields=[]; if(u) loadMyFields(); else fillFieldSelects(); if($('tab-hist').classList.contains('on')) renderHistTab(); }
+}
+function openAuth(){ if(user){ sb.auth.signOut(); toast('تم تسجيل الخروج.'); return; } $('aMsg').textContent=''; $('authDlg').showModal(); }
+async function authDo(mode){
+  const email=$('aEmail').value.trim(), password=$('aPass').value;
+  if(!email||password.length<6){ $('aMsg').textContent='أدخل بريداً صحيحاً وكلمة مرور من 6 أحرف على الأقل.'; return; }
+  $('aMsg').textContent='…';
+  const r=mode==='up'?await sb.auth.signUp({email,password}):await sb.auth.signInWithPassword({email,password});
+  if(r.error){ $('aMsg').textContent=AUTH_ERR[r.error.message]||r.error.message; return; }
+  if(mode==='up'&&!r.data.session){ $('aMsg').textContent='أُرسلت رسالة تأكيد إلى بريدك. أكّد الحساب ثم سجّل الدخول.'; return; }
+  $('authDlg').close(); toast('مرحباً بك.');
+}
+
+async function loadMyFields(){
+  if(!sb||!user) return;
+  const {data,error}=await sb.from('fields').select('id,name,polygon,center_lat,center_lng,area_ha,created_at').order('created_at',{ascending:false});
+  if(error){ console.error(error); toast('تعذّر تحميل حقولك: '+error.message); return; }
+  myFields=data||[]; fillFieldSelects();
+}
+function fillFieldSelects(){
+  const a=$('myFields'), h=$('hField'), cur=h.value;
+  a.hidden=!myFields.length;
+  a.innerHTML='<option value="">حقولي المحفوظة…</option>'+myFields.map(f=>`<option value="${f.id}">${esc(f.name)} · ${esc(f.area_ha)} هكتار</option>`).join('');
+  h.innerHTML=myFields.length?myFields.map(f=>`<option value="${f.id}">${esc(f.name)}</option>`).join(''):'<option value="">لا حقول محفوظة بعد</option>';
+  if(cur&&myFields.some(f=>f.id===cur)) h.value=cur;
+  if($('tab-hist').classList.contains('on')) loadFlights();
+}
+function loadFieldToMap(f){ clearField(true); $('fname').value=f.name; setField(f.polygon,f.name); field.id=f.id; showTab('field'); }
+function pickMyField(id){ const f=myFields.find(x=>x.id===id); if(f) loadFieldToMap(f); $('myFields').value=''; }
+
+async function saveFlight(spots,tel,cnt){
+  if(!sb||!user||!field) return;
+  const n=cnt.sick+cnt.healthy; if(!n) return;
+  try{
+    if(!field.id){
+      const {data,error}=await sb.from('fields').insert({name:field.name,polygon:field.poly,center_lat:field.center[0],center_lng:field.center[1],area_ha:field.area_ha}).select('id').single();
+      if(error) throw error; field.id=data.id;
+    }
+    const summary={sick:cnt.sick,healthy:cnt.healthy,unknown:cnt.unk,total:spots.length,health_pct:Math.round(100*cnt.healthy/n)};
+    const {data:fl,error:e2}=await sb.from('flights').insert({field_id:field.id,telemetry:tel||null,summary,model_version:MODEL_VERSION}).select('id').single();
+    if(e2) throw e2;
+    const rows=await Promise.all(spots.map(async s=>{
+      let path=null;
+      if(s.zone&&s.zone.blob){
+        const p=`${user.id}/${fl.id}/${s.label}.jpg`;
+        const {error}=await sb.storage.from('spot-images').upload(p,s.zone.blob,{contentType:'image/jpeg',upsert:true});
+        if(error) console.warn('رفع الصورة',error); else path=p;
+      }
+      const r=s.res||{};
+      return {flight_id:fl.id,label:s.label,lat:s.lat==null?null:s.lat,lng:s.lng==null?null:s.lng,image_path:path,class_en:r.en||null,class_ar:r.name||null,confidence:r.conf==null?null:r.conf,state:r.state||'unk',box:r.box||null};
+    }));
+    const {error:e3}=await sb.from('spots').insert(rows); if(e3) throw e3;
+    toast('حُفظت الرحلة في سجلك.'); loadMyFields();
+  }catch(e){ console.error(e); toast('تعذّر حفظ الرحلة: '+(e.message||e)); }
+}
+
+/* ---- تبويب السجل ---- */
+function renderHistTab(){
+  const sub=$('hSub');
+  if(!SUPABASE_URL||!SUPABASE_ANON_KEY){ sub.textContent='لم يُضبط الاتصال بقاعدة البيانات بعد.'; $('hList').innerHTML='<div class="empty">ضع SUPABASE_URL و SUPABASE_ANON_KEY في أعلى كود الصفحة لتفعيل السجل.</div>'; $('hDetail').innerHTML=''; return; }
+  if(!user){ sub.textContent='سجّل الدخول لحفظ رحلاتك ومقارنتها.'; $('hList').innerHTML='<div class="empty">سجّل الدخول من الأعلى لترى سجلك.</div>'; $('hDetail').innerHTML=''; $('hOpen').hidden=true; $('hDel').hidden=true; return; }
+  sub.textContent='رحلاتك المحفوظة لكل حقل.'; loadFlights();
+}
+async function loadFlights(){
+  if(!sb||!user) return;
+  const fid=$('hField').value; hSel=[]; $('hDetail').innerHTML=''; $('hOpen').hidden=!fid; $('hDel').hidden=!fid;
+  if(!fid){ $('hList').innerHTML='<div class="empty">لا توجد حقول محفوظة بعد. أطلق الدرون على حقل وأنت مسجّل الدخول ليُحفظ تلقائياً.</div>'; return; }
+  $('hList').innerHTML='<div class="empty">جارٍ التحميل…</div>';
+  const {data,error}=await sb.from('flights').select('id,created_at,summary,telemetry').eq('field_id',fid).order('created_at',{ascending:false}).limit(60);
+  if(error){ $('hList').innerHTML='<div class="empty">تعذّر التحميل: '+esc(error.message)+'</div>'; return; }
+  window._flights=data;
+  if(!data.length){ $('hList').innerHTML='<div class="empty">لا توجد رحلات لهذا الحقل بعد.</div>'; return; }
+  $('hList').innerHTML='<div class="hrows">'+data.map(f=>{
+    const s=f.summary||{}, t=f.telemetry||{}, col=healthColor(s.sick||0,s.healthy||0), n=(s.sick||0)+(s.healthy||0);
+    const d=new Date(f.created_at).toLocaleString('ar-DZ',{dateStyle:'medium',timeStyle:'short'});
+    return `<div class="hrow"><input type="checkbox" aria-label="اختيار للمقارنة" onchange="togglePick('${f.id}',this)"><span class="hdot" style="background:${col}"></span><div class="grow"><strong>${esc(d)}</strong><small>سليم ${esc(s.health_pct==null?'—':s.health_pct)}% · مصاب ${esc(s.sick||0)} من ${n} · ${esc(t.temperature==null?'—':t.temperature)}°م · رطوبة ${esc(t.humidity==null?'—':t.humidity)}%</small></div><button class="btn" onclick="showFlight('${f.id}')">عرض</button><button class="btn" onclick="delFlight('${f.id}')">حذف</button></div>`;
+  }).join('')+'</div><div class="row" style="margin-top:10px"><button class="btn" id="bCmp" onclick="compareFlights()" disabled>قارن بين رحلتين (اختر رحلتين)</button></div>';
+}
+function togglePick(id,el){
+  if(el.checked){ if(hSel.length>=2){ el.checked=false; toast('اختر رحلتين فقط للمقارنة.'); return; } hSel.push(id); } else hSel=hSel.filter(x=>x!==id);
+  $('bCmp').disabled=hSel.length!==2;
+}
+async function getSpots(fid){
+  const {data,error}=await sb.from('spots').select('*').eq('flight_id',fid).order('label'); if(error) throw error;
+  const paths=data.filter(s=>s.image_path).map(s=>s.image_path), urls={};
+  if(paths.length){ const {data:su}=await sb.storage.from('spot-images').createSignedUrls(paths,3600); (su||[]).forEach(u=>{ if(u.signedUrl) urls[u.path]=u.signedUrl; }); }
+  return data.map(s=>({...s,url:urls[s.image_path]||null}));
+}
+async function showFlight(id){
+  const box=$('hDetail'); box.innerHTML='<div class="empty">جارٍ التحميل…</div>';
+  try{
+    const sp=await getSpots(id), f=(window._flights||[]).find(x=>x.id===id);
+    if(f&&f.summary&&typeof field!=='undefined'&&field&&field.id===$('hField').value) paintField(f.summary.sick||0,f.summary.healthy||0);
+    box.innerHTML='<div class="summary">تفاصيل الرحلة</div><div class="cards">'+sp.map(s=>{
+      const st=s.state||'unk', tr=TREAT[s.class_en]||'', cf=s.confidence==null?'':Math.round(s.confidence*100)+'%';
+      return `<div class="card">${s.url?`<img class="ph" src="${s.url}" alt="النقطة ${esc(s.label)}">`:''}<div class="body"><h4>النقطة ${esc(s.label)}: ${esc(s.class_ar||'غير مؤكد')}</h4><div class="en">${esc(s.class_en||'')}</div><span class="badge ${st}">${cf?('الثقة '+cf):'بلا نتيجة'}</span><p>${esc(tr)}</p></div></div>`;
+    }).join('')+'</div>';
+    box.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){ box.innerHTML='<div class="empty">تعذّر التحميل: '+esc(e.message||e)+'</div>'; }
+}
+async function classCounts(fid){
+  const {data,error}=await sb.from('spots').select('class_ar,class_en,state').eq('flight_id',fid); if(error) throw error;
+  const m={}; data.filter(s=>s.state!=='unk').forEach(s=>{ const k=s.class_ar||s.class_en||'؟'; m[k]=(m[k]||0)+1; }); return m;
+}
+async function compareFlights(){
+  const fl=window._flights||[], a=fl.find(f=>f.id===hSel[0]), b=fl.find(f=>f.id===hSel[1]); if(!a||!b) return;
+  const [o,n]=new Date(a.created_at)<new Date(b.created_at)?[a,b]:[b,a], box=$('hDetail');
+  box.innerHTML='<div class="empty">جارٍ المقارنة…</div>';
+  try{
+    const [co,cn]=await Promise.all([classCounts(o.id),classCounts(n.id)]);
+    const d=x=>new Date(x.created_at).toLocaleDateString('ar-DZ',{dateStyle:'medium'});
+    const ho=(o.summary||{}).health_pct, hn=(n.summary||{}).health_pct;
+    let verdict='لا يمكن الحكم (بيانات ناقصة).';
+    if(ho!=null&&hn!=null){ const dd=hn-ho; verdict=dd>0?`تحسّنت نسبة النقاط السليمة بمقدار ${dd} نقطة مئوية.`:dd<0?`تراجعت نسبة النقاط السليمة بمقدار ${-dd} نقطة مئوية.`:'لا تغيّر في نسبة النقاط السليمة.'; }
+    const keys=[...new Set([...Object.keys(co),...Object.keys(cn)])];
+    box.innerHTML=`<div class="summary">${esc(verdict)}</div><table class="cmp"><tr><th></th><th>الأقدم (${esc(d(o))})</th><th>الأحدث (${esc(d(n))})</th></tr><tr><td>نسبة السليم</td><td>${esc(ho==null?'—':ho+'%')}</td><td>${esc(hn==null?'—':hn+'%')}</td></tr>${keys.map(k=>`<tr><td>${esc(k)}</td><td>${co[k]||0}</td><td>${cn[k]||0}</td></tr>`).join('')}</table><p style="color:var(--dim);font-size:13px;margin-top:8px">المقارنة بين نقاط عيّنة وليست مسحاً كاملاً للحقل، فاعتبرها مؤشراً وليست قياساً دقيقاً.</p>`;
+  }catch(e){ box.innerHTML='<div class="empty">تعذّرت المقارنة: '+esc(e.message||e)+'</div>'; }
+}
+async function delFlight(id){
+  if(!confirm('حذف هذه الرحلة وصورها نهائياً؟')) return;
+  try{
+    const {data}=await sb.from('spots').select('image_path').eq('flight_id',id), paths=(data||[]).map(x=>x.image_path).filter(Boolean);
+    if(paths.length) await sb.storage.from('spot-images').remove(paths);
+    const {error}=await sb.from('flights').delete().eq('id',id); if(error) throw error;
+    toast('حُذفت الرحلة.'); loadFlights();
+  }catch(e){ toast('تعذّر الحذف: '+(e.message||e)); }
+}
+async function delField(){
+  const fid=$('hField').value; if(!fid) return;
+  if(!confirm('حذف الحقل وكل رحلاته وصوره نهائياً؟')) return;
+  try{
+    const {data:fls}=await sb.from('flights').select('id').eq('field_id',fid), ids=(fls||[]).map(x=>x.id);
+    if(ids.length){ const {data}=await sb.from('spots').select('image_path').in('flight_id',ids), paths=(data||[]).map(x=>x.image_path).filter(Boolean); if(paths.length) await sb.storage.from('spot-images').remove(paths); }
+    const {error}=await sb.from('fields').delete().eq('id',fid); if(error) throw error;
+    toast('حُذف الحقل.'); await loadMyFields();
+  }catch(e){ toast('تعذّر الحذف: '+(e.message||e)); }
+}
+function openFieldOnMap(){
+  const f=myFields.find(x=>x.id===$('hField').value); if(!f) return;
+  loadFieldToMap(f); const last=(window._flights||[])[0];
+  if(last&&last.summary) paintField(last.summary.sick||0,last.summary.healthy||0);
+  toast('الحقل على الخريطة وملوّن بحسب آخر رحلة.');
+}
+
+/* ============== التقرير (طباعة / PDF) ============== */
+function sketchSVG(f,spots){
+  if(!f||!f.poly||f.poly.length<3) return '';
+  const W=340,H=230,pad=20, la=f.poly.map(p=>p[0]), lo=f.poly.map(p=>p[1]);
+  const a=Math.min(...la), b=Math.max(...la), c=Math.min(...lo), d=Math.max(...lo), cs=Math.cos(((a+b)/2)*Math.PI/180);
+  const xe=Math.max((d-c)*cs,1e-9), ye=Math.max(b-a,1e-9), k=Math.min((W-2*pad)/xe,(H-2*pad)/ye), ox=(W-xe*k)/2, oy=(H-ye*k)/2;
+  const X=g=>ox+(g-c)*cs*k, Y=t=>H-oy-(t-a)*k, col={ok:'#3f7d1c',sick:'#c0452b',unk:'#b8860b'};
+  const pts=f.poly.map(p=>X(p[1]).toFixed(1)+','+Y(p[0]).toFixed(1)).join(' ');
+  const dots=spots.filter(s=>s.lat!=null&&s.lng!=null).map(s=>{ const st=(s.res&&s.res.state)||'unk'; return `<circle cx="${X(s.lng).toFixed(1)}" cy="${Y(s.lat).toFixed(1)}" r="9" fill="${col[st]}" stroke="#fff" stroke-width="1.5"/><text x="${X(s.lng).toFixed(1)}" y="${(Y(s.lat)+4).toFixed(1)}" text-anchor="middle" font-size="11" fill="#fff" font-weight="700">${esc(s.label)}</text>`; }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="${H}" fill="#f4f6ee" rx="8"/><polygon points="${pts}" fill="rgba(127,191,69,.25)" stroke="#6b7f3a" stroke-width="2"/>${dots}</svg>`;
+}
+function makeReport(){
+  const r=window._lastRun; if(!r||!r.spots||!r.spots.length){ toast('لا توجد نتائج لإصدار تقرير.'); return; }
+  const t=r.tel||{}, f=r.field, sp=r.spots, v=(x,u)=>x==null?'—':esc(x)+u;
+  const sick=sp.filter(s=>s.res&&s.res.state==='sick'), ok=sp.filter(s=>s.res&&s.res.state==='ok');
+  const date=new Date().toLocaleDateString('ar-DZ',{dateStyle:'long'});
+  const advice=[...new Set(sick.map(s=>s.res.en))].map(e=>`<li><b>${esc(AR[e]||e)}:</b> ${esc(TREAT[e]||'')}</li>`).join('');
+  const cards=sp.map(s=>{ const q=s.res||{}, cf=q.conf==null?'':Math.round(q.conf*100)+'%'; return `<div class="c"><img src="${s.dataUrl}" alt=""><div class="b"><h4>النقطة ${esc(s.label)}: ${esc(q.name||'غير مؤكد')}</h4><div class="en">${esc(q.en||'')}</div><span class="bd ${q.state||'unk'}">${cf?('الثقة '+cf):'بلا نتيجة'}</span>${s.lat!=null?`<div class="en" style="margin-top:6px">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</div>`:''}</div></div>`; }).join('');
+  const html=`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير فحص الحقل</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
+<style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;color:#1d2314;font-size:13px;line-height:1.7;margin:0}
+h1{font-size:22px;margin:0 0 2px}h2{font-size:16px;margin:18px 0 8px;border-bottom:2px solid #dcae3c;padding-bottom:3px}.sub{color:#5b6648}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;flex:1;min-width:230px}.kv b{color:#5b6648;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.c{display:flex;gap:10px;border:1px solid #d8dcc8;border-radius:8px;padding:8px;break-inside:avoid}.c img{width:120px;height:90px;object-fit:cover;border-radius:6px}
+.c h4{margin:0;font-size:14px}.en{direction:ltr;text-align:right;color:#6a7458;font-size:11px}.bd{display:inline-block;border-radius:12px;padding:0 9px;font-size:11px;font-weight:600;margin-top:4px}
+.bd.ok{background:#e1efd2;color:#3f7d1c}.bd.sick{background:#f6d9d1;color:#a33a24}.bd.unk{background:#f4e8c6;color:#8a6508}
+ul{margin:4px 0;padding-inline-start:20px}.note{margin-top:18px;padding:8px 12px;background:#f4f6ee;border-radius:8px;color:#5b6648;font-size:12px}footer{margin-top:14px;color:#8a9477;font-size:11px;text-align:center}</style></head><body>
+<h1>تقرير فحص حقل القمح</h1><div class="sub">${esc(date)} · WheatField · WheatGuard</div>
+<h2>الحقل والظروف</h2><div class="row"><div class="kv">
+<b>الحقل</b><span>${esc((f&&f.name)||'غير محدد')}</span><b>المساحة</b><span>${f?esc(f.area_ha)+' هكتار':'—'}</span><b>الموقع</b><span style="direction:ltr;text-align:right">${f&&f.center?f.center[0].toFixed(4)+', '+f.center[1].toFixed(4):'—'}</span>
+<b>الحرارة</b><span>${v(t.temperature,'°م')}</span><b>الرطوبة</b><span>${v(t.humidity,'%')}</span><b>الرياح</b><span>${v(t.wind_kph&&+(+t.wind_kph).toFixed(1),' كم/س')}</span><b>الحالة الجوية</b><span>${esc(t.condition||'—')}</span></div>${sketchSVG(f,sp)}</div>
+<h2>الخلاصة</h2><p>فُحصت ${sp.length} نقاط: ${ok.length} سليمة، ${sick.length} مصابة${sp.length-ok.length-sick.length?`، ${sp.length-ok.length-sick.length} غير مؤكدة`:''}.</p>
+${advice?`<h2>التوصيات</h2><ul>${advice}</ul>`:''}<h2>نتائج النقاط</h2><div class="grid">${cards}</div>
+<div class="note">هذه نتيجة آلية استرشادية مبنية على صور العيّنات فقط، وقد تخطئ. راجع مهندساً زراعياً قبل أي معالجة أو رشّ.</div><footer>أُنشئ بواسطة WheatField · WheatGuard</footer></body></html>`;
+  const w=window.open('','_blank'); if(!w){ toast('اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  Promise.race([w.document.fonts?w.document.fonts.ready:Promise.resolve(),new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} },400));
+}
+initSupabase();
 </script>
 </body>
 </html>
