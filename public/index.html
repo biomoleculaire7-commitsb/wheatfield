@@ -655,8 +655,8 @@ $('bulk').onchange=async e=>{
 };
 
 /* ============== Supabase: الحسابات والسجل ============== */
-const SUPABASE_URL='';        // مثال: https://abcdxyz.supabase.co
-const SUPABASE_ANON_KEY='';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
+const SUPABASE_URL='https://zrmebyscbdohguzgdrgn.supabase.co';        // مثال: https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY='sb_publishable_R2j8rW7-4DyevEawxpVj-w_qwcG0TH_';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
 let sb=null, user=null, myFields=[], hSel=[];
 const toast=m=>{ const t=$('toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>{ t.style.display='none'; },5000); };
 function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
