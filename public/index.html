@@ -4,8 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WheatField و WheatGuard</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Reem+Kufi:wght@600&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#12150e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WheatGuard">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Reem+Kufi:wght@600&display=swap" rel="stylesheet" crossorigin="anonymous">
 <style>
 :root{
   --soil:#12150e; --soil2:#1a1f13; --soil3:#232a19; --line:#34402a;
@@ -122,7 +129,9 @@ dialog .field-in{margin-bottom:10px}
     <button id="nb-field" class="on" onclick="showTab('field')">WheatField · الدرون</button>
     <button id="nb-guard" onclick="showTab('guard')">WheatGuard · كشف الأمراض</button>
     <button id="nb-hist" onclick="showTab('hist')">سجل الرحلات</button>
+    <button id="nb-eval" onclick="showTab('eval')">اختبار الدقة</button>
   </nav>
+  <button class="chip" id="installBtn" onclick="installApp()" hidden>ثبّت التطبيق</button>
   <button class="chip" id="authBtn" onclick="openAuth()" hidden>تسجيل الدخول</button>
   <div class="srv"><span class="dot" id="srvDot"></span><span id="srvTxt">فحص الخادم…</span></div>
 </header>
@@ -185,6 +194,11 @@ dialog .field-in{margin-bottom:10px}
 <div id="tab-guard" class="tab">
 <div class="wrap">
   <div class="bar">
+    <div class="grow"><strong>فحص سريع بصورة واحدة</strong><small>صوّر ورقة أو سنبلة وسنحلّلها فوراً، دون رسم حقل أو إطلاق الدرون.</small></div>
+    <label class="btn">التقط بالكاميرا<input type="file" accept="image/*" capture="environment" hidden onchange="quickScan(this)"></label>
+    <label class="btn">اختر صورة<input type="file" accept="image/*" hidden onchange="quickScan(this)"></label>
+  </div>
+  <div class="bar">
     <span class="dot" id="mDot"></span>
     <div class="grow"><strong id="mTxt">النموذج غير محمّل</strong><small id="mSub">wheat-disease.tflite</small></div>
     <label class="btn">اختر ملف النموذج<input type="file" accept=".tflite,.onnx" id="mFile" hidden></label>
@@ -216,6 +230,23 @@ dialog .field-in{margin-bottom:10px}
 </div>
 </div>
 
+<div id="tab-eval" class="tab">
+<div class="wrap">
+  <div class="bar">
+    <div class="grow"><strong>اختبار دقة النموذج</strong><small>ارفع صوراً <b>لم تُستعمل في التدريب</b>، لصنف واحد في كل مرة، لنقيس ما يصيب فيه النموذج وما يخلط بينه. وإلا خرجت النسبة أعلى من الواقع.</small></div>
+  </div>
+  <div class="bar">
+    <label for="eTruth">الصنف الحقيقي للصور:</label>
+    <select id="eTruth" class="field-in" style="width:auto;min-width:220px"></select>
+    <label class="btn">اختر الصور<input type="file" id="eFiles" accept="image/*" multiple hidden></label>
+    <button class="btn" onclick="evalCsv()">تصدير CSV</button>
+    <button class="btn" onclick="evalClear()">امسح النتائج</button>
+    <span id="eProg" style="color:var(--dim)"></span>
+  </div>
+  <div id="eOut"></div>
+</div>
+</div>
+
 <dialog id="authDlg">
   <h3>تسجيل الدخول</h3>
   <p>حسابك يحفظ حقولك ورحلاتك وصورك ويفصلها عن غيرك.</p>
@@ -228,8 +259,8 @@ dialog .field-in{margin-bottom:10px}
 </dialog>
 <div class="toast" id="toast" role="status"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js" crossorigin="anonymous"></script>
 <script>
 /* ============== الإعدادات ============== */
 const SERVER = 'https://wheatfield.onrender.com';
@@ -265,9 +296,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clock = () => new Date().toTimeString().slice(0,5);
 function log(m, c=''){ const d=document.createElement('div'); d.className=c; d.textContent=clock()+'  '+m; const L=$('log'); L.prepend(d); }
 function showTab(n){
-  ['field','guard','hist'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
+  ['field','guard','hist','eval'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
   if(n==='field') setTimeout(()=>map.invalidateSize(),50);
   if(n==='hist') renderHistTab();
+  if(n==='eval') evalRender();
 }
 
 /* ============== حالة الخادم ============== */
@@ -368,10 +400,12 @@ function renderZones(){
   zones.forEach((z,i)=>{
     const d=document.createElement('div'); d.className='zone'+(z.blob?' has':'');
     const th=z.dataUrl?`<img class="thumb" src="${z.dataUrl}" alt="النقطة ${z.label}">`:`<div class="thumb">اضغط لرفع صورة أو فيديو</div>`;
-    d.innerHTML=`${th}<div><strong>النقطة ${z.label}</strong><small>${z.lat.toFixed(5)}, ${z.lng.toFixed(5)}</small></div><div class="row" style="gap:2px"><button class="btn up" style="padding:6px 12px">رفع</button><button class="x" aria-label="إزالة الملف" title="إزالة الملف">×</button></div>`;
+    d.innerHTML=`${th}<div><strong>النقطة ${z.label}</strong><small>${z.lat.toFixed(5)}, ${z.lng.toFixed(5)}</small></div><div class="row" style="gap:2px"><button class="btn cam" style="padding:6px 10px">كاميرا</button><button class="btn up" style="padding:6px 10px">رفع</button><button class="x" aria-label="إزالة الملف" title="إزالة الملف">×</button></div>`;
     const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,video/*'; inp.hidden=true; d.appendChild(inp);
-    d.querySelector('.thumb').onclick=()=>inp.click(); d.querySelector('.up').onclick=()=>inp.click();
-    inp.onchange=async()=>{ if(!inp.files[0]) return; try{ const r=await mediaToJpeg(inp.files[0]); z.blob=r.blob; z.dataUrl=r.dataUrl; setMk(z,'has'); log(`النقطة ${z.label}: الملف جاهز.`,'ok'); }catch{ log('تعذّر قراءة الملف. جرّب صورة JPG أو فيديو MP4.','er'); } renderZones(); };
+    const cam=document.createElement('input'); cam.type='file'; cam.accept='image/*'; cam.setAttribute('capture','environment'); cam.hidden=true; d.appendChild(cam);
+    d.querySelector('.thumb').onclick=()=>inp.click(); d.querySelector('.up').onclick=()=>inp.click(); d.querySelector('.cam').onclick=()=>cam.click();
+    const pick=async el=>{ if(!el.files[0]) return; try{ const r=await mediaToJpeg(el.files[0]); z.blob=r.blob; z.dataUrl=r.dataUrl; setMk(z,'has'); log(`النقطة ${z.label}: الملف جاهز.`,'ok'); }catch{ log('تعذّر قراءة الملف. جرّب صورة JPG أو فيديو MP4.','er'); } renderZones(); };
+    inp.onchange=()=>pick(inp); cam.onchange=()=>pick(cam);
     d.querySelector('.x').onclick=()=>{ z.blob=null; z.dataUrl=null; setMk(z,''); renderZones(); };
     box.appendChild(d);
   });
@@ -453,7 +487,7 @@ async function fetchModel(url){
 }
 async function saveUserModel(name,buf){ try{ const c=await caches.open(CACHE); await c.put('/__wf_user_model__',new Response(buf,{headers:{'x-name':encodeURIComponent(name)}})); }catch(e){ console.warn('تعذّر حفظ النموذج',e); } }
 async function getUserModel(){ try{ const c=await caches.open(CACHE); const r=await c.match('/__wf_user_model__'); if(!r) return null; return {name:decodeURIComponent(r.headers.get('x-name')||'model.onnx'),buf:await r.arrayBuffer()}; }catch{ return null; } }
-const loadScript=u=>new Promise((res,rej)=>{ const e=document.createElement('script'); e.src=u; e.onload=res; e.onerror=()=>rej(new Error('تعذّر تحميل '+u)); document.head.appendChild(e); });
+const loadScript=u=>new Promise((res,rej)=>{ const e=document.createElement('script'); e.src=u; e.crossOrigin='anonymous'; e.onload=res; e.onerror=()=>rej(new Error('تعذّر تحميل '+u)); document.head.appendChild(e); });
 async function ensureTflite(){
   if(window.tflite&&window.tf) return;
   await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js');
@@ -558,7 +592,7 @@ async function analyzeAll(spots,opts){
   let sick=0,healthy=0,unk=0;
   for(const s of spots){
     const card=document.createElement('div'); card.className='card';
-    card.innerHTML=`<canvas></canvas><div class="body"><h4>النقطة ${s.label}</h4><div class="en">جارٍ التحليل…</div></div>`; box.appendChild(card);
+    card.innerHTML=`<canvas></canvas><div class="body"><h4>${s.title||('النقطة '+s.label)}</h4><div class="en">جارٍ التحليل…</div></div>`; box.appendChild(card);
     const img=await loadImg(s.dataUrl), cv=card.querySelector('canvas'), k=Math.min(1,720/img.naturalWidth);
     cv.width=img.naturalWidth*k; cv.height=img.naturalHeight*k; const x=cv.getContext('2d'); x.drawImage(img,0,0,cv.width,cv.height);
     let res=null,msg='';
@@ -573,7 +607,7 @@ async function analyzeAll(spots,opts){
       }else{ msg='لم يتأكد النموذج من أي مرض (الثقة أقل من 25%). جرّب صورة أقرب للورقة.'; unk++; }
     }
     s.res={en,name,conf:cnum,state,box:(res&&state!=='unk'&&res.box)?res.box.map(v=>Math.round(v)):null};
-    card.querySelector('.body').innerHTML=`<h4>النقطة ${s.label}: ${name}</h4><div class="en">${en}</div><span class="badge ${state}">${conf?('الثقة '+conf):'بلا نتيجة'}</span><p>${tr||msg}</p>`;
+    card.querySelector('.body').innerHTML=`<h4>${s.title||('النقطة '+s.label)}: ${name}</h4><div class="en">${en}</div><span class="badge ${state}">${conf?('الثقة '+conf):'بلا نتيجة'}</span><p>${tr||msg}</p>`;
     if(s.zone) setMk(s.zone,state);
   }
   const n=sick+healthy+unk;
@@ -607,8 +641,8 @@ $('bulk').onchange=async e=>{
 };
 
 /* ============== Supabase: الحسابات والسجل ============== */
-const SUPABASE_URL='https://zrmebyscbdohguzgdrgn.supabase.co';        // مثال:https://zrmebyscbdohguzgdrgn.supabase.co
-const SUPABASE_ANON_KEY='sb_publishable_R2j8rW7-4DyevEawxpVj-w_qwcG0TH_';   // هنا أبداًsb_publishable_R2j8rW7-4DyevEawxpVj-w_qwcG0TH_
+const SUPABASE_URL='';        // مثال: https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY='';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
 let sb=null, user=null, myFields=[], hSel=[];
 const toast=m=>{ const t=$('toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>{ t.style.display='none'; },5000); };
 function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -791,7 +825,7 @@ function makeReport(){
   const sick=sp.filter(s=>s.res&&s.res.state==='sick'), ok=sp.filter(s=>s.res&&s.res.state==='ok');
   const date=new Date().toLocaleDateString('ar-DZ',{dateStyle:'long'});
   const advice=[...new Set(sick.map(s=>s.res.en))].map(e=>`<li><b>${esc(AR[e]||e)}:</b> ${esc(TREAT[e]||'')}</li>`).join('');
-  const cards=sp.map(s=>{ const q=s.res||{}, cf=q.conf==null?'':Math.round(q.conf*100)+'%'; return `<div class="c"><img src="${s.dataUrl}" alt=""><div class="b"><h4>النقطة ${esc(s.label)}: ${esc(q.name||'غير مؤكد')}</h4><div class="en">${esc(q.en||'')}</div><span class="bd ${q.state||'unk'}">${cf?('الثقة '+cf):'بلا نتيجة'}</span>${s.lat!=null?`<div class="en" style="margin-top:6px">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</div>`:''}</div></div>`; }).join('');
+  const cards=sp.map(s=>{ const q=s.res||{}, cf=q.conf==null?'':Math.round(q.conf*100)+'%'; return `<div class="c"><img src="${s.dataUrl}" alt=""><div class="b"><h4>${esc(s.title||('النقطة '+s.label))}: ${esc(q.name||'غير مؤكد')}</h4><div class="en">${esc(q.en||'')}</div><span class="bd ${q.state||'unk'}">${cf?('الثقة '+cf):'بلا نتيجة'}</span>${s.lat!=null?`<div class="en" style="margin-top:6px">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</div>`:''}</div></div>`; }).join('');
   const html=`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير فحص الحقل</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
 <style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;color:#1d2314;font-size:13px;line-height:1.7;margin:0}
@@ -812,6 +846,87 @@ ${advice?`<h2>التوصيات</h2><ul>${advice}</ul>`:''}<h2>نتائج الن�
   w.document.open(); w.document.write(html); w.document.close();
   Promise.race([w.document.fonts?w.document.fonts.ready:Promise.resolve(),new Promise(r=>setTimeout(r,2500))]).then(()=>setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} },400));
 }
+
+/* ============== فحص سريع بصورة واحدة ============== */
+async function quickScan(inp){
+  const f=inp.files[0]; inp.value=''; if(!f) return;
+  try{
+    const r=await mediaToJpeg(f), spots=[{label:'1',title:'الصورة',dataUrl:r.dataUrl}];
+    renderGuard(window._lastTel||{},spots,'فحص سريع بصورة واحدة'); analyzeAll(spots);
+  }catch(e){ toast('تعذّر قراءة الصورة. جرّب صورة JPG.'); }
+}
+
+/* ============== اختبار دقة النموذج ============== */
+let evalRows=[];
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+function evalStats(rows,thr){
+  const n=rows.length, ok=r=>r.pred===r.truth, correct=rows.filter(ok).length, cov=rows.filter(r=>r.conf>=thr);
+  const per={}, conf={};
+  rows.forEach(r=>{ const p=per[r.truth]||(per[r.truth]={n:0,ok:0,cOk:[],cBad:[]}); p.n++; if(ok(r)){ p.ok++; p.cOk.push(r.conf); } else { p.cBad.push(r.conf); const k=r.truth+'→'+r.pred; conf[k]=(conf[k]||0)+1; } });
+  const binOk=rows.filter(r=>isHealthy(r.pred)===isHealthy(r.truth)).length;
+  return {n,correct,acc:n?correct/n:0,bin:n?binOk/n:0,thr,cov:n?cov.length/n:0,covAcc:cov.length?cov.filter(ok).length/cov.length:null,per,
+    conf:Object.entries(conf).sort((a,b)=>b[1]-a[1]).slice(0,8),
+    th:[0.25,0.4,0.5,0.6,0.7,0.8,0.9].map(t=>{ const c=rows.filter(r=>r.conf>=t); return {t,cov:n?c.length/n:0,acc:c.length?c.filter(ok).length/c.length:null,n:c.length}; })};
+}
+function thumbOf(img){ const c=document.createElement('canvas'), k=96/Math.max(img.naturalWidth,img.naturalHeight); c.width=Math.max(1,Math.round(img.naturalWidth*k)); c.height=Math.max(1,Math.round(img.naturalHeight*k)); c.getContext('2d').drawImage(img,0,0,c.width,c.height); return c.toDataURL('image/jpeg',.6); }
+async function evalRun(files){
+  if(!sess){ toast('حمّل النموذج أولاً (يظهر «النموذج جاهز» في تبويب WheatGuard).'); return; }
+  const truth=$('eTruth').value; let i=0, skipped=0;
+  for(const f of files){
+    i++; $('eProg').textContent=`تحليل ${i} من ${files.length}…`;
+    try{
+      const r=await mediaToJpeg(f), img=await loadImg(r.dataUrl), o=await infer(img);
+      evalRows.push({file:f.name,truth,pred:o.idx>=0?(LABELS[o.idx]||('Class '+o.idx)):'none',conf:o.idx>=0?o.conf:0,thumb:thumbOf(img)});
+    }catch(e){ skipped++; console.warn('تخطّي',f.name,e); }
+  }
+  $('eProg').textContent=''; if(skipped) toast('تعذّر تحليل '+skipped+' ملف(ات) فتُخطّيت.'); evalRender();
+}
+const pct=x=>x==null?'—':Math.round(x*100)+'%';
+function evalRender(){
+  const out=$('eOut'); if(!out) return;
+  if(!$('eTruth').options.length) $('eTruth').innerHTML=LABELS.map(l=>`<option value="${l}">${esc(AR[l]||l)} (${l})</option>`).join('');
+  if(!evalRows.length){ out.innerHTML='<div class="empty">لا نتائج بعد. اختر الصنف الحقيقي ثم ارفع صوره (يفضّل 20 صورة فأكثر لكل صنف).</div>'; return; }
+  const s=evalStats(evalRows,THRESH), nm=k=>esc(AR[k]||k);
+  const per=Object.entries(s.per).map(([k,p])=>`<tr><td>${nm(k)}</td><td>${p.n}</td><td>${p.ok}</td><td><b>${pct(p.ok/p.n)}</b></td><td>${pct(avg(p.cOk))}</td><td>${pct(avg(p.cBad))}</td></tr>`).join('');
+  const cf=s.conf.length?s.conf.map(([k,c])=>{ const [a,b]=k.split('→'); return `<tr><td>${nm(a)}</td><td>${nm(b)}</td><td>${c}</td></tr>`; }).join(''):'<tr><td colspan="3">لا أخطاء.</td></tr>';
+  const th=s.th.map(t=>`<tr><td>${Math.round(t.t*100)}%</td><td>${t.n} (${pct(t.cov)})</td><td><b>${pct(t.acc)}</b></td></tr>`).join('');
+  const wrong=evalRows.filter(r=>r.pred!==r.truth).slice(-30).map(r=>`<div class="card"><img class="ph" src="${r.thumb}" alt="" style="max-height:110px;object-fit:contain"><div class="body"><small>${esc(r.file)}</small><div>الحقيقي: <b>${nm(r.truth)}</b></div><div>توقّع: <b>${nm(r.pred)}</b> (${pct(r.conf)})</div></div></div>`).join('');
+  out.innerHTML=`<div class="tel">
+    <div class="stat"><span>عدد الصور</span><b>${s.n}</b></div>
+    <div class="stat"><span>الدقة (الصنف بالضبط)</span><b>${pct(s.acc)}</b></div>
+    <div class="stat"><span>سليم أم مريض فقط</span><b>${pct(s.bin)}</b></div>
+    <div class="stat"><span>عند حدّ الثقة الحالي ${Math.round(THRESH*100)}%</span><b>${pct(s.covAcc)}</b><span>يغطي ${pct(s.cov)} من الصور</span></div></div>
+  <div class="summary">لكل صنف</div><table class="cmp"><tr><th>الصنف</th><th>الصور</th><th>صحيحة</th><th>الدقة</th><th>ثقة الصحيح</th><th>ثقة الخاطئ</th></tr>${per}</table>
+  <div class="summary">أكثر الأخطاء تكراراً</div><table class="cmp"><tr><th>الحقيقي</th><th>توقّعه النموذج</th><th>المرات</th></tr>${cf}</table>
+  <div class="summary">أثر حدّ الثقة</div><table class="cmp"><tr><th>الحدّ</th><th>الصور المقبولة</th><th>دقتها</th></tr>${th}</table>
+  <p style="color:var(--dim);font-size:13px;margin-top:8px">ارفع الحدّ إن أردت دقة أعلى مقابل تغطية أقل. غيّر <code>THRESH</code> في أعلى الكود بعد أن تقرّر.</p>
+  ${wrong?`<div class="summary">أمثلة على الأخطاء</div><div class="cards">${wrong}</div>`:''}`;
+}
+function evalCsvText(){
+  const safe=v=>{ v=String(v); return /^[=+\-@]/.test(v)?"'"+v:v; };
+  const rows=[['file','truth','pred','confidence','correct'],...evalRows.map(r=>[r.file,r.truth,r.pred,(+r.conf).toFixed(4),r.pred===r.truth?1:0])];
+  return '\ufeff'+rows.map(r=>r.map(v=>'"'+safe(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+}
+function evalCsv(){
+  if(!evalRows.length){ toast('لا نتائج لتصديرها.'); return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([evalCsvText()],{type:'text/csv;charset=utf-8'})); a.download='wheat-eval.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+function evalClear(){ if(evalRows.length&&!confirm('مسح كل نتائج الاختبار؟ صدّرها CSV أولاً إن أردت الاحتفاظ بها.')) return; evalRows=[]; evalRender(); }
+$('eFiles').onchange=e=>{ const fs=[...e.target.files]; e.target.value=''; if(fs.length) evalRun(fs); };
+
+/* ============== تثبيت التطبيق (PWA) ============== */
+let deferredPrompt=null;
+const isStandalone=()=>(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredPrompt=e; if(!isStandalone()) $('installBtn').hidden=false; });
+window.addEventListener('appinstalled',()=>{ $('installBtn').hidden=true; deferredPrompt=null; toast('تم تثبيت التطبيق.'); });
+if(/iphone|ipad|ipod/i.test(navigator.userAgent)&&!isStandalone()) $('installBtn').hidden=false;
+async function installApp(){
+  if(deferredPrompt){ deferredPrompt.prompt(); try{ await deferredPrompt.userChoice; }catch(e){} deferredPrompt=null; $('installBtn').hidden=true; }
+  else toast('في الآيفون: اضغط زر المشاركة ثم «إضافة إلى الشاشة الرئيسية».');
+}
+window.addEventListener('offline',()=>toast('انقطع الإنترنت. الكشف يعمل، لكن الخريطة والطقس والخادم متوقفة.'));
+window.addEventListener('online',()=>{ toast('عاد الاتصال.'); checkServer(); });
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW',e))); }
 initSupabase();
 </script>
 </body>
