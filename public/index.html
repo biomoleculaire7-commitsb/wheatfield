@@ -206,6 +206,7 @@ dialog .field-in{margin-bottom:10px}
     <span class="dot" id="mDot"></span>
     <div class="grow"><strong id="mTxt">النموذج غير محمّل</strong><small id="mSub">wheat-disease.tflite</small></div>
     <label class="btn">اختر ملف النموذج<input type="file" accept=".tflite,.onnx" id="mFile" hidden></label>
+    <button class="btn" id="mReset" hidden onclick="clearUserModel()">العودة لنموذج الخادم</button>
   </div>
   <div class="bar">
     <div class="grow"><strong id="srcTxt">لا توجد بيانات بعد</strong><small>تصل الصور والقياسات من الدرون، أو اسحبها من الخادم.</small></div>
@@ -536,13 +537,17 @@ async function loadModel(src,name){
 $('mFile').onchange=async e=>{
   const f=e.target.files[0]; if(!f) return; const buf=await f.arrayBuffer(), copy=buf.slice(0);
   const ok=await loadModel(f.name.toLowerCase().endsWith('.tflite')?buf:new Uint8Array(buf),f.name);
-  if(ok){ await saveUserModel(f.name,copy); modelUI('ok',f.name+' (محفوظ في هذا المتصفح)'); }
+  if(ok){ await saveUserModel(f.name,copy); modelUI('ok',f.name+' (نموذجك المحفوظ في هذا المتصفح)'); const r=$('mReset'); if(r) r.hidden=false; }
   const sp=window._lastSpots; if(sp) analyzeAll(sp);
 };
+async function clearUserModel(){ try{ const c=await caches.open(CACHE); await c.delete('/__wf_user_model__'); }catch{} location.reload(); }
 (async()=>{
-  let first=''; for(const u of MODEL_URLS){ if(await loadModel(u,u)) return; if(!first) first=lastErr; }
+  // النموذج الذي اختاره المستخدم يُفضَّل على نموذج الخادم
   const um=await getUserModel();
-  if(um&&await loadModel(um.name.toLowerCase().endsWith('.tflite')?um.buf:new Uint8Array(um.buf),um.name)){ modelUI('ok',um.name+' (محفوظ في هذا المتصفح فقط — فشل التحميل من الخادم: '+first+')'); return; }
+  if(um&&await loadModel(um.name.toLowerCase().endsWith('.tflite')?um.buf:new Uint8Array(um.buf),um.name)){
+    modelUI('ok',um.name+' (نموذجك المحفوظ في هذا المتصفح)'); const r=$('mReset'); if(r) r.hidden=false; return;
+  }
+  let first=''; for(const u of MODEL_URLS){ if(await loadModel(u,u)) return; if(!first) first=lastErr; }
   modelUI('err',first);
 })();
 
