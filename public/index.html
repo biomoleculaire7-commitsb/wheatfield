@@ -120,6 +120,10 @@ dialog .field-in{margin-bottom:10px}
 .cmp th{color:var(--dim);font-weight:500;font-size:13px}
 .legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--dim);font-size:13px;margin:10px 0}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-inline-end:5px}
+#gmap{height:min(52vh,420px);min-height:260px;border:1px solid var(--line);border-radius:12px;background:#0d0f0a}
+#gmapWrap{margin-bottom:6px}
+.card{cursor:pointer}
+.card.hl{outline:2px solid var(--wheat);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -210,6 +214,11 @@ dialog .field-in{margin-bottom:10px}
   </div>
   <div class="tel" id="tel"></div>
   <div class="risk" id="risk" hidden></div>
+  <div id="gmapWrap" hidden>
+    <div class="summary" style="margin-top:0">خريطة الحقل ونتائج النقاط</div>
+    <div id="gmap"></div>
+    <div class="legend"><span><i style="background:#7fbf45"></i>سليمة</span><span><i style="background:#d4603f"></i>مصابة</span><span><i style="background:#dcae3c"></i>غير مؤكدة</span><span>اضغط نقطة لرؤية بطاقتها، أو بطاقة لرؤية موقعها.</span></div>
+  </div>
   <div class="summary" id="summary"></div>
   <button class="btn" id="bReport" hidden onclick="makeReport()" style="margin-bottom:14px">تقرير للطباعة / حفظ PDF</button>
   <div class="cards" id="cards"><div class="empty" style="grid-column:1/-1">أطلق الدرون من تبويب WheatField أو استقبل آخر بيانات من الخادم لتبدأ عملية الكشف.</div></div>
@@ -299,6 +308,7 @@ function showTab(n){
   ['field','guard','hist','eval'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
   if(n==='field') setTimeout(()=>map.invalidateSize(),50);
   if(n==='hist') renderHistTab();
+  if(n==='guard') gmapResize();
   if(n==='eval') evalRender();
 }
 
@@ -590,8 +600,9 @@ function renderGuard(t,spots,from){
 async function analyzeAll(spots,opts){
   const box=$('cards'); box.innerHTML=''; $('summary').textContent=''; $('bReport').hidden=true;
   let sick=0,healthy=0,unk=0;
+  gmapInit(spots,opts&&opts.fieldCtx);
   for(const s of spots){
-    const card=document.createElement('div'); card.className='card';
+    const card=document.createElement('div'); card.className='card'; const si=spots.indexOf(s); card.id='card-'+si; card.onclick=()=>gmapFocus(si,false);
     card.innerHTML=`<canvas></canvas><div class="body"><h4>${s.title||('النقطة '+s.label)}</h4><div class="en">جارٍ التحليل…</div></div>`; box.appendChild(card);
     const img=await loadImg(s.dataUrl), cv=card.querySelector('canvas'), k=Math.min(1,720/img.naturalWidth);
     cv.width=img.naturalWidth*k; cv.height=img.naturalHeight*k; const x=cv.getContext('2d'); x.drawImage(img,0,0,cv.width,cv.height);
@@ -609,6 +620,7 @@ async function analyzeAll(spots,opts){
     s.res={en,name,conf:cnum,state,box:(res&&state!=='unk'&&res.box)?res.box.map(v=>Math.round(v)):null};
     card.querySelector('.body').innerHTML=`<h4>${s.title||('النقطة '+s.label)}: ${name}</h4><div class="en">${en}</div><span class="badge ${state}">${conf?('الثقة '+conf):'بلا نتيجة'}</span><p>${tr||msg}</p>`;
     if(s.zone) setMk(s.zone,state);
+    gmapUpdate(spots.indexOf(s));
   }
   const n=sick+healthy+unk;
   if(n){
@@ -625,7 +637,9 @@ async function pullServer(manual){
     const j=await r.json(); if(j.timestamp===lastTs&&!manual) return; lastTs=j.timestamp;
     const spots=(j.images||[]).map((im,i)=>({label:im.spot||'ABCDEF'[i],lat:j.spots?.[i]?.lat,lng:j.spots?.[i]?.lon,dataUrl:im.base64}));
     if(!spots.length) return;
-    renderGuard(j.telemetry||{},spots,'من الخادم · '+new Date(j.timestamp).toLocaleTimeString('ar-DZ')); analyzeAll(spots);
+    renderGuard(j.telemetry||{},spots,'من الخادم · '+new Date(j.timestamp).toLocaleTimeString('ar-DZ'));
+    const jf=j.field&&Array.isArray(j.field.polygon)&&j.field.polygon.length>=3?{name:j.field.name,poly:j.field.polygon,area_ha:j.field.area_ha,center:j.field.center}:null;
+    analyzeAll(spots,{fieldCtx:jf});
   }catch{ if(manual) $('srcTxt').textContent='تعذّر الاتصال بالخادم.'; }
 }
 function togglePoll(){ clearInterval(pollT); if($('poll').checked){ pullServer(); pollT=setInterval(pullServer,5000); } }
@@ -641,8 +655,8 @@ $('bulk').onchange=async e=>{
 };
 
 /* ============== Supabase: الحسابات والسجل ============== */
-const SUPABASE_URL='https://zrmebyscbdohguzgdrgn.supabase.co';        // مثال: https://abcdxyz.supabase.co
-const SUPABASE_ANON_KEY='sb_publishable_R2j8rW7-4DyevEawxpVj-w_qwcG0TH_';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
+const SUPABASE_URL='';        // مثال: https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY='';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
 let sb=null, user=null, myFields=[], hSel=[];
 const toast=m=>{ const t=$('toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>{ t.style.display='none'; },5000); };
 function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -927,6 +941,40 @@ async function installApp(){
 window.addEventListener('offline',()=>toast('انقطع الإنترنت. الكشف يعمل، لكن الخريطة والطقس والخادم متوقفة.'));
 window.addEventListener('online',()=>{ toast('عاد الاتصال.'); checkServer(); });
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW',e))); }
+
+/* ===== خريطة نتائج الكشف ===== */
+let gmap=null,gLayer=null,gMarkers=[],gSpots=[],gBounds=null;
+function gIcon(label,state){ return L.divIcon({className:'',html:`<div class="zp ${state}">${esc(label)}</div>`,iconSize:[28,28],iconAnchor:[14,14]}); }
+function gmapResize(){ if(!gmap) return; setTimeout(()=>{ try{ gmap.invalidateSize(); if(gBounds) gmap.fitBounds(gBounds,{padding:[30,30],maxZoom:18}); }catch(e){} },60); }
+function gmapInit(spots,fc){
+  gSpots=spots; gMarkers=[]; const wrap=$('gmapWrap');
+  const pts=[]; spots.forEach((s,i)=>{ if(s.lat!=null&&s.lng!=null&&Number.isFinite(+s.lat)&&Number.isFinite(+s.lng)) pts.push([i,+s.lat,+s.lng]); });
+  const poly=fc&&Array.isArray(fc.poly)&&fc.poly.length>=3?fc.poly:null;
+  if(!pts.length&&!poly){ wrap.hidden=true; return; }
+  wrap.hidden=false;
+  if(!gmap){
+    gmap=L.map('gmap',{minZoom:3});
+    const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'});
+    const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri World Imagery'});
+    sat.addTo(gmap);
+    L.control.layers({'أقمار صناعية':sat,'خريطة الطرق':osm},null,{position:'topleft'}).addTo(gmap);
+    gLayer=L.layerGroup().addTo(gmap);
+  }
+  gLayer.clearLayers();
+  if(poly) L.polygon(poly,{color:'#dcae3c',weight:2,fillColor:'#7fbf45',fillOpacity:.18}).addTo(gLayer);
+  pts.forEach(([i,la,lo])=>{ const mk=L.marker([la,lo],{icon:gIcon(spots[i].label,'unk')}).addTo(gLayer); mk.on('click',()=>gmapFocus(i,true)); gMarkers[i]=mk; });
+  gBounds=L.latLngBounds(pts.map(p=>[p[1],p[2]]).concat(poly||[])); gmapResize();
+}
+function gmapUpdate(i){
+  const s=gSpots[i], mk=gMarkers[i]; if(!s||!mk||!s.res) return;
+  mk.setIcon(gIcon(s.label,s.res.state));
+  mk.bindPopup(`<div style="direction:rtl;text-align:right"><b>${esc(s.title||('النقطة '+s.label))}</b><br>${esc(s.res.name)}</div>`);
+}
+function gmapFocus(i,fromMap){
+  const mk=gMarkers[i], card=$('card-'+i);
+  if(fromMap){ if(card){ card.scrollIntoView({behavior:'smooth',block:'center'}); card.classList.add('hl'); setTimeout(()=>card.classList.remove('hl'),2200); } }
+  else if(mk&&gmap){ gmap.setView(mk.getLatLng(),Math.max(gmap.getZoom(),17)); mk.openPopup(); $('gmapWrap').scrollIntoView({behavior:'smooth',block:'start'}); }
+}
 initSupabase();
 </script>
 </body>
