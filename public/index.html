@@ -104,6 +104,16 @@ img.thumb{border:0}
 .card p{margin-top:8px;font-size:14px;color:var(--dim)}
 .empty{text-align:center;color:var(--dim);padding:50px 10px;border:1px dashed var(--line);border-radius:12px}
 @media(max-width:900px){.layout{grid-template-columns:1fr}.mapbox{height:60vh}aside{max-height:none;border-inline-start:0;border-top:1px solid var(--line)}}
+@media(max-width:700px){
+body{font-size:17px}
+.brand small,.stat span{font-size:14px}
+.srv,.step p,.info,.card .en,.card p,.badge,.hrow small,.cmp th,.legend,dialog p,#aMsg,.log{font-size:16px!important}
+.btn,button,select,input{font-size:16px}
+.card{min-width:0}
+.cards{grid-template-columns:1fr}
+.legend{gap:10px}
+.zp{width:34px;height:34px;font-size:15px}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 dialog{background:var(--soil2);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(380px,92vw);margin:auto}
 dialog::backdrop{background:rgba(0,0,0,.65)}
