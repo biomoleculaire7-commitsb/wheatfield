@@ -119,6 +119,10 @@ html,body{max-width:100%;overflow-x:hidden}
 .legend{gap:10px}
 .zp{width:34px;height:34px;font-size:15px}
 }
+.lvbox{position:relative;max-width:900px;margin:10px auto;background:#000;border-radius:12px;overflow:hidden}
+.lvbox video{width:100%;height:auto;display:block}
+.lvbox canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.lvtbl{width:100%;border-collapse:collapse;margin-top:8px}.lvtbl td,.lvtbl th{padding:8px 10px;border-bottom:1px solid var(--line);text-align:start}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 dialog{background:var(--soil2);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(380px,92vw);margin:auto}
 dialog::backdrop{background:rgba(0,0,0,.65)}
@@ -148,6 +152,7 @@ dialog .field-in{margin-bottom:10px}
     <button id="nb-field" class="on" onclick="showTab('field')">WheatField · الدرون</button>
     <button id="nb-guard" onclick="showTab('guard')">WheatGuard · كشف الأمراض</button>
     <button id="nb-hist" onclick="showTab('hist')">سجل الرحلات</button>
+    <button id="nb-live" onclick="showTab('live')">كاميرا مباشرة</button>
     <button id="nb-eval" onclick="showTab('eval')">اختبار الدقة</button>
   </nav>
   <button class="chip" id="installBtn" onclick="installApp()" hidden>ثبّت التطبيق</button>
@@ -241,6 +246,20 @@ dialog .field-in{margin-bottom:10px}
 </div>
 </div>
 
+<div id="tab-live" class="tab">
+<div class="wrap">
+  <div class="bar"><div class="grow"><strong>كشف مباشر بالكاميرا أو الفيديو</strong><small>يحلل الصورة الحية كل نحو نصف ثانية ويرسم مربعاً حول كل إصابة. التحليل يتم على جهازك ولا يُرفع شيء.</small></div></div>
+  <div class="row" style="margin:10px 0">
+    <button class="btn" onclick="liveStartCam()">شغّل الكاميرا</button>
+    <label class="btn">حلّل فيديو من جهازك<input type="file" id="lvFile" accept="video/*" hidden onchange="liveFile(this)"></label>
+    <button class="btn" id="lvSnap" onclick="liveSnap()" disabled>التقط الإطار للتشخيص</button>
+    <button class="btn" id="lvStop" onclick="liveStop(true)" hidden>إيقاف</button>
+  </div>
+  <div id="lvMsg" style="color:var(--dim);min-height:22px"></div>
+  <div class="lvbox" id="lvBox" hidden><video id="lvVideo" playsinline muted></video><canvas id="lvCanvas"></canvas></div>
+  <div class="summary" id="lvSum"></div>
+  <div id="lvTbl"></div>
+</div></div>
 <div id="tab-hist" class="tab">
 <div class="wrap">
   <div class="bar">
@@ -321,10 +340,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const clock = () => new Date().toTimeString().slice(0,5);
 function log(m, c=''){ const d=document.createElement('div'); d.className=c; d.textContent=clock()+'  '+m; const L=$('log'); L.prepend(d); }
 function showTab(n){
-  ['field','guard','hist','eval'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
+  ['field','guard','hist','live','eval'].forEach(t=>{ $('tab-'+t).classList.toggle('on',t===n); $('nb-'+t).classList.toggle('on',t===n); });
   if(n==='field') setTimeout(()=>map.invalidateSize(),50);
   if(n==='hist') renderHistTab();
   if(n==='guard') gmapResize();
+  if(n!=='live') liveStop();
   if(n==='eval') evalRender();
 }
 
@@ -568,7 +588,7 @@ async function clearUserModel(){ try{ const c=await caches.open(CACHE); await c.
 
 function prep(img,S){
   const c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d'); x.fillStyle='rgb(114,114,114)'; x.fillRect(0,0,S,S);
-  const w=img.naturalWidth,h=img.naturalHeight,r=Math.min(S/w,S/h),nw=Math.round(w*r),nh=Math.round(h*r),dx=(S-nw)>>1,dy=(S-nh)>>1;
+  const w=img.videoWidth||img.naturalWidth,h=img.videoHeight||img.naturalHeight,r=Math.min(S/w,S/h),nw=Math.round(w*r),nh=Math.round(h*r),dx=(S-nw)>>1,dy=(S-nh)>>1;
   x.drawImage(img,dx,dy,nw,nh); return {d:x.getImageData(0,0,S,S).data,S,r,dx,dy};
 }
 function decode(o,p){
@@ -579,11 +599,22 @@ function decode(o,p){
     let k=0; a.forEach((v,i)=>{ if(v>a[k]) k=i; }); return {idx:k,conf:a[k],box:null};
   }
   let C,N,get; if(dims[1]<dims[2]){ C=dims[1]; N=dims[2]; get=(c,i)=>data[c*N+i]; } else { N=dims[1]; C=dims[2]; get=(c,i)=>data[i*C+c]; }
-  let best={idx:-1,conf:0,box:null};
-  for(let i=0;i<N;i++) for(let c=0;c<C-4;c++){ const s=get(4+c,i); if(s>best.conf){ let cx=get(0,i),cy=get(1,i),w=get(2,i),h=get(3,i); const kk=Math.max(cx,cy,w,h)<=1.5?p.S:1; cx*=kk; cy*=kk; w*=kk; h*=kk;
-    best={idx:c,conf:s,box:[(cx-w/2-p.dx)/p.r,(cy-h/2-p.dy)/p.r,w/p.r,h/p.r]}; } }
+  let best={idx:-1,conf:0,box:null}; const cand=[];
+  const bx=i=>{ let cx=get(0,i),cy=get(1,i),w=get(2,i),h=get(3,i); const kk=Math.max(cx,cy,w,h)<=1.5?p.S:1; cx*=kk; cy*=kk; w*=kk; h*=kk;
+    return [(cx-w/2-p.dx)/p.r,(cy-h/2-p.dy)/p.r,w/p.r,h/p.r]; };
+  for(let i=0;i<N;i++){
+    let bc=-1,bs=0; for(let c=0;c<C-4;c++){ const sc=get(4+c,i); if(sc>bs){ bs=sc; bc=c; } }
+    if(bc<0||(bs<THRESH&&bs<=best.conf)) continue;
+    const b=bx(i);
+    if(bs>best.conf) best={idx:bc,conf:bs,box:b};
+    if(bs>=THRESH) cand.push({idx:bc,conf:bs,box:b});
+  }
+  best.all=nms(cand);
   return best;
 }
+function iou(a,b){ const x1=Math.max(a[0],b[0]),y1=Math.max(a[1],b[1]),x2=Math.min(a[0]+a[2],b[0]+b[2]),y2=Math.min(a[1]+a[3],b[1]+b[3]),w=Math.max(0,x2-x1),h=Math.max(0,y2-y1),i=w*h; return i/(a[2]*a[3]+b[2]*b[3]-i||1); }
+function nms(c,thr=0.45,max=30){ c.sort((a,b)=>b.conf-a.conf); const keep=[]; for(const d of c){ if(keep.length>=max) break; if(keep.every(k=>k.idx!==d.idx||iou(k.box,d.box)<=thr)) keep.push(d); } return keep; }
+function sumDet(all){ const m={}; (all||[]).forEach(d=>{ const e=LABELS[d.idx]||('Class '+d.idx), n=AR[e]||e; m[n]=(m[n]||0)+1; }); return Object.entries(m).map(([n,k])=>n+(k>1?' ×'+k:'')).join('، '); }
 async function infer(img){
   if(sess.type==='tflite'){
     const p=prep(img,inSize), n=p.S*p.S, f=new Float32Array(n*3);
@@ -629,12 +660,16 @@ async function analyzeAll(spots,opts){
     let res=null,msg='';
     if(!sess) msg='النموذج غير محمّل. اختر ملف النموذج (tflite) من الأعلى.';
     else{ try{ res=await infer(img); }catch(e){ msg='تعذّر تشغيل النموذج على هذه الصورة.'; } }
+    if(res&&res.all&&res.all.length){ const sd=res.all.find(d=>!isHealthy(LABELS[d.idx])); if(sd) res={...sd,all:res.all}; }
     let state='unk',name='غير مؤكد',en='',tr='',conf='',cnum=null;
     if(res){
       if(res.conf>=THRESH&&res.idx>=0){
         en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; cnum=res.conf; conf=Math.round(res.conf*100)+'%';
         state=isHealthy(en)?'ok':'sick'; if(state==='sick') sick++; else healthy++;
-        if(res.box){ x.strokeStyle=state==='ok'?'#7fbf45':'#d4603f'; x.lineWidth=3; x.strokeRect(res.box[0]*k,res.box[1]*k,res.box[2]*k,res.box[3]*k); }
+        const dl=(res.all&&res.all.length)?res.all:[res]; x.lineWidth=3; x.font='bold '+Math.max(13,cv.width/38)+'px sans-serif'; x.textBaseline='bottom';
+        dl.forEach(d=>{ if(!d.box) return; const e2=LABELS[d.idx]||'', col=isHealthy(e2)?'#7fbf45':'#d4603f'; x.strokeStyle=col; x.strokeRect(d.box[0]*k,d.box[1]*k,d.box[2]*k,d.box[3]*k);
+          const tx=e2+' '+Math.round(d.conf*100)+'%', tw=x.measureText(tx).width+8, ty=Math.max(d.box[1]*k,Math.max(13,cv.width/38)+4); x.fillStyle=col; x.fillRect(d.box[0]*k,ty-Math.max(13,cv.width/38)-4,tw,Math.max(13,cv.width/38)+6); x.fillStyle='#10140c'; x.fillText(tx,d.box[0]*k+4,ty); });
+        if(dl.length>1) tr=(tr?tr+' ':'')+'عدد المواضع المكتشفة: '+dl.length+' ('+sumDet(dl)+').';
       }else{ msg='لم يتأكد النموذج من أي مرض (الثقة أقل من 25%). جرّب صورة أقرب للورقة.'; unk++; }
     }
     s.res={en,name,conf:cnum,state,box:(res&&state!=='unk'&&res.box)?res.box.map(v=>Math.round(v)):null};
@@ -675,8 +710,8 @@ $('bulk').onchange=async e=>{
 };
 
 /* ============== Supabase: الحسابات والسجل ============== */
-const SUPABASE_URL='https://zrmebyscbdohguzgdrgn.supabase.co';        // مثال: https://abcdxyz.supabase.co
-const SUPABASE_ANON_KEY='sb_publishable_R2j8rW7-4DyevEawxpVj-w_qwcG0TH_';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
+const SUPABASE_URL='';        // مثال: https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY='';   // المفتاح العام (anon / publishable) فقط. لا تضع مفتاح service_role هنا أبداً
 let sb=null, user=null, myFields=[], hSel=[];
 const toast=m=>{ const t=$('toast'); t.textContent=m; t.style.display='block'; clearTimeout(toast._t); toast._t=setTimeout(()=>{ t.style.display='none'; },5000); };
 function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -994,6 +1029,71 @@ function gmapFocus(i,fromMap){
   const mk=gMarkers[i], card=$('card-'+i);
   if(fromMap){ if(card){ card.scrollIntoView({behavior:'smooth',block:'center'}); card.classList.add('hl'); setTimeout(()=>card.classList.remove('hl'),2200); } }
   else if(mk&&gmap){ gmap.setView(mk.getLatLng(),Math.max(gmap.getZoom(),17)); mk.openPopup(); $('gmapWrap').scrollIntoView({behavior:'smooth',block:'start'}); }
+}
+
+/* ============== كشف مباشر: كاميرا أو فيديو ============== */
+let liveStream=null,liveRun=false,liveBusy=false,liveStats={},liveFirst={},liveFrames=0;
+function liveSetMsg(t){ $('lvMsg').textContent=t||''; }
+function liveReset(){ liveStats={}; liveFirst={}; liveFrames=0; $('lvSum').textContent=''; $('lvTbl').innerHTML=''; }
+async function liveStartCam(){
+  if(!sess){ liveSetMsg('النموذج غير محمّل بعد. انتظر حتى تظهر عبارة «النموذج جاهز» في تبويب WheatGuard.'); return; }
+  if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)){ liveSetMsg('هذا المتصفح لا يدعم الكاميرا المباشرة. افتح المنصة في Chrome عبر HTTPS.'); return; }
+  liveStop(); liveReset(); liveSetMsg('جارٍ تشغيل الكاميرا…');
+  try{ liveStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false}); }
+  catch(e){ liveSetMsg('تعذّر تشغيل الكاميرا. اسمح للمتصفح باستعمالها من إعدادات الموقع.'); return; }
+  const v=$('lvVideo'); v.controls=false; v.srcObject=liveStream; v.muted=true; v.playsInline=true;
+  try{ await v.play(); }catch(e){}
+  $('lvBox').hidden=false; liveBegin('cam');
+}
+async function liveFile(inp){
+  const f=inp.files[0]; inp.value=''; if(!f) return;
+  if(!sess){ liveSetMsg('النموذج غير محمّل بعد.'); return; }
+  liveStop(); liveReset();
+  const v=$('lvVideo'); v.srcObject=null; v.src=URL.createObjectURL(f); v.controls=true; v.muted=true; v.playsInline=true;
+  $('lvBox').hidden=false;
+  try{ await v.play(); }catch(e){ liveSetMsg('اضغط زر التشغيل في الفيديو للبدء.'); }
+  liveBegin('file');
+}
+function liveBegin(mode){ liveRun=true; $('lvStop').hidden=false; $('lvSnap').disabled=false; liveSetMsg(mode==='cam'?'التحليل يعمل. قرّب الكاميرا من الورقة.':'يُحلَّل الفيديو أثناء تشغيله.'); liveTick(); }
+async function liveTick(){
+  if(!liveRun) return; const v=$('lvVideo');
+  if(v.ended){ liveFinish(); return; }
+  if(v.videoWidth&&!v.paused&&!liveBusy){
+    liveBusy=true; const t0=performance.now();
+    try{ const res=await infer(v); if(liveRun) liveDraw(res,v); }catch(e){ console.warn('live',e); }
+    liveBusy=false;
+    setTimeout(liveTick,Math.max(40,350-(performance.now()-t0))); return;
+  }
+  setTimeout(liveTick,150);
+}
+function liveDraw(res,v){
+  const c=$('lvCanvas'); c.width=v.videoWidth; c.height=v.videoHeight; const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height);
+  const fs=Math.max(14,c.width/40); x.font='bold '+fs+'px sans-serif'; x.textBaseline='bottom'; x.lineWidth=Math.max(2,c.width/300);
+  const all=(res&&res.all)||[]; const seen=new Set();
+  all.forEach(d=>{ if(!d.box) return; const e=LABELS[d.idx]||'', col=isHealthy(e)?'#7fbf45':'#d4603f'; x.strokeStyle=col; x.strokeRect(d.box[0],d.box[1],d.box[2],d.box[3]);
+    const tx=(AR[e]||e)+' '+Math.round(d.conf*100)+'%', tw=x.measureText(tx).width+10, ty=Math.max(d.box[1],fs+6);
+    x.fillStyle=col; x.fillRect(d.box[0],ty-fs-6,tw,fs+8); x.fillStyle='#10140c'; x.fillText(tx,d.box[0]+5,ty-1); seen.add(AR[e]||e); });
+  liveFrames++; seen.forEach(n=>{ liveStats[n]=(liveStats[n]||0)+1; if(!(n in liveFirst)) liveFirst[n]=v.currentTime||0; });
+  liveShow();
+}
+function fmtT(t){ t=Math.round(t); return Math.floor(t/60)+':'+String(t%60).padStart(2,'0'); }
+function liveShow(){
+  const rows=Object.entries(liveStats).sort((a,b)=>b[1]-a[1]);
+  $('lvSum').textContent=liveFrames+' إطاراً محلَّلاً'+(rows.length?'':' · لا إصابات ظاهرة حتى الآن');
+  $('lvTbl').innerHTML=rows.length?'<table class="lvtbl"><tr><th>ما ظهر</th><th>عدد الإطارات</th><th>أول ظهور</th></tr>'+rows.map(([n,k])=>`<tr><td>${esc(n)}</td><td>${k} (${Math.round(100*k/liveFrames)}%)</td><td>${fmtT(liveFirst[n]||0)}</td></tr>`).join('')+'</table>':'';
+}
+function liveFinish(){ liveRun=false; $('lvStop').hidden=true; liveSetMsg('انتهى الفيديو. هذا ملخص ما ظهر فيه.'); liveShow(); }
+function liveStop(userClicked){
+  liveRun=false; if(liveStream){ liveStream.getTracks().forEach(t=>t.stop()); liveStream=null; }
+  const v=$('lvVideo'); if(v){ try{ v.pause(); }catch(e){} if(!v.ended&&userClicked) liveSetMsg('تم الإيقاف.'); }
+  const st=$('lvStop'); if(st) st.hidden=true; const sn=$('lvSnap'); if(sn) sn.disabled=true;
+  const c=$('lvCanvas'); if(c){ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height); }
+}
+function liveSnap(){
+  const v=$('lvVideo'); if(!v||!v.videoWidth) return;
+  const k=Math.min(1,960/Math.max(v.videoWidth,v.videoHeight)), c=document.createElement('canvas'); c.width=Math.round(v.videoWidth*k); c.height=Math.round(v.videoHeight*k); c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  const spots=[{label:'1',title:'لقطة مباشرة',dataUrl:c.toDataURL('image/jpeg',.85)}];
+  showTab('guard'); renderGuard(window._lastTel||{},spots,'لقطة من الكاميرا المباشرة'); analyzeAll(spots);
 }
 initSupabase();
 </script>
