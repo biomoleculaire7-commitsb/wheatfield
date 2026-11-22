@@ -219,11 +219,13 @@ app.post('/ndvi', async (req, res) => {
 
     // اختيار أفضل مشهد (اختياري): الأحدث بين المشاهد الأقل غيوماً، وإلا الأقل غيوماً
     try {
-      const cr = await shPost(token, ['/api/v1/catalog/1.0.0/search'], { collections: ['sentinel-2-l2a'], datetime: from_s + '/' + to_s, bbox: [w, s, e, n], limit: 50 }, 'application/json');
+      const cr = await shPost(token, ['/catalog/v1/search', '/api/v1/catalog/1.0.0/search'], { collections: ['sentinel-2-l2a'], datetime: from_s + '/' + to_s, bbox: [w, s, e, n], limit: 50 }, 'application/json');
+      console.log('[ndvi] catalog status', cr ? cr.status : 'none');
       if (cr && cr.ok) {
         const feats = ((await cr.json()).features || []).map(f => ({ d: f.properties && f.properties.datetime, c: f.properties && f.properties['eo:cloud_cover'] })).filter(f => f.d && Number.isFinite(f.c));
         const clear = feats.filter(f => f.c <= 30).sort((a, b) => b.d.localeCompare(a.d));
         const pick = clear[0] || feats.sort((a, b) => a.c - b.c)[0];
+        console.log('[ndvi] catalog scenes', feats.length);
         if (pick) { date = pick.d.slice(0, 10); cloud = Math.round(pick.c); from_s = date + 'T00:00:00Z'; to_s = date + 'T23:59:59Z'; }
       }
     } catch (e) { /* نتابع بدون الكتالوج */ }
