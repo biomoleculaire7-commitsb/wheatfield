@@ -9,7 +9,7 @@ const fs       = require('fs');
 const app    = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-const BAND_KEY   = 'band_a_1780742646_tSsWs9F10mNPRp-4SuHJkrsyB1jK0Y4R4';
+const BAND_KEY   = process.env.BAND_KEY || 'band_a_1780742646_tSsWs9F10mNPRp-4SuHJkrsyB1jK0Y4R4';
 const BAND_URL   = 'https://band.ai/api/v1/agents/run';
 const FIELD_LAT  = 35.6841;
 const FIELD_LON  = 0.6324;
@@ -146,6 +146,113 @@ app.post('/proxy', upload.any(), async (req, res) => {
   } catch(err) {
     console.error('[/proxy]', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ── خريطة صحة الحقل (NDVI) من Sentinel-2 عبر Copernicus Data Space ──
+// بيانات الدخول من متغيرات البيئة فقط: CDSE_CLIENT_ID و CDSE_CLIENT_SECRET
+const crypto       = require('crypto');
+const CDSE_ID      = process.env.CDSE_CLIENT_ID;
+const CDSE_SECRET  = process.env.CDSE_CLIENT_SECRET;
+const CDSE_TOKEN   = process.env.CDSE_TOKEN_URL || 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
+const SH_BASE      = process.env.SH_BASE_URL   || 'https://sh.dataspace.copernicus.eu';
+let cdseTok = null, cdseExp = 0;
+async function cdseToken() {
+  if (cdseTok && Date.now() < cdseExp - 60000) return cdseTok;
+  const r = await fetch(CDSE_TOKEN, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: CDSE_ID, client_secret: CDSE_SECRET })
+  });
+  if (!r.ok) { const e = new Error('auth'); e.status = r.status; throw e; }
+  const j = await r.json(); cdseTok = j.access_token; cdseExp = Date.now() + (j.expires_in || 300) * 1000; return cdseTok;
+}
+// NDVI مقيَّد 0..255 (من -0.2 إلى 1.0) في قناة، وقناة ثانية شفافة للغيوم وخارج الحقل
+const NDVI_EVALSCRIPT = `//VERSION=3
+function setup(){return{input:[{bands:["B04","B08","SCL","dataMask"]}],output:{bands:2,sampleType:"UINT8"}};}
+function evaluatePixel(s){
+  var c=s.SCL;
+  if(s.dataMask===0||c===1||c===3||c===8||c===9||c===10||c===11) return [0,0];
+  var n=(s.B08-s.B04)/(s.B08+s.B04+0.000001);
+  var v=Math.max(0,Math.min(1,(n+0.2)/1.2));
+  return [Math.round(v*255),255];
+}`;
+const ndviCache = new Map(), ndviHits = new Map(); let ndviDay = '', ndviCount = 0;
+function ndviLimit(ip) {
+  const day = new Date().toISOString().slice(0, 10);
+  if (day !== ndviDay) { ndviDay = day; ndviCount = 0; }
+  if (ndviCount >= 300) return false;
+  const now = Date.now(), arr = (ndviHits.get(ip) || []).filter(t => now - t < 3600000);
+  if (arr.length >= 12) { ndviHits.set(ip, arr); return false; }
+  arr.push(now); ndviHits.set(ip, arr); ndviCount++; return true;
+}
+async function shPost(token, urlPaths, body, accept) {
+  let last;
+  for (const p of urlPaths) {
+    const r = await fetch(SH_BASE + p, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: accept }, body: JSON.stringify(body) });
+    if (r.status === 404) { last = r; continue; }
+    return r;
+  }
+  return last;
+}
+app.post('/ndvi', async (req, res) => {
+  try {
+    if (!CDSE_ID || !CDSE_SECRET) return res.status(503).json({ error: 'not_configured' });
+    const poly = req.body && req.body.polygon;
+    if (!Array.isArray(poly) || poly.length < 3 || poly.length > 300 ||
+        !poly.every(q => Array.isArray(q) && q.length >= 2 && Number.isFinite(+q[0]) && Number.isFinite(+q[1]) && +q[0] > 18 && +q[0] < 38.6 && +q[1] > -9 && +q[1] < 12.6))
+      return res.status(400).json({ error: 'bad_polygon' });
+    const pts = poly.map(q => [+q[1], +q[0]]);               // [lng, lat]
+    const lngs = pts.map(q => q[0]), lats = pts.map(q => q[1]);
+    const w = Math.min(...lngs), e = Math.max(...lngs), s = Math.min(...lats), n = Math.max(...lats);
+    const lat0 = (s + n) / 2, wm = (e - w) * 111320 * Math.cos(lat0 * Math.PI / 180), hm = (n - s) * 110540;
+    if (wm > 12000 || hm > 12000) return res.status(400).json({ error: 'too_big' });
+    if (wm < 20 || hm < 20) return res.status(400).json({ error: 'too_small' });
+    const days = Math.max(5, Math.min(60, parseInt(req.body.days) || 30));
+    const key = crypto.createHash('sha1').update(JSON.stringify(pts.map(q => q.map(v => +v.toFixed(5)))) + '|' + days + '|' + new Date().toISOString().slice(0, 10)).digest('hex');
+    const hit = ndviCache.get(key); if (hit && Date.now() - hit.t < 6 * 3600000) return res.json(hit.v);
+    if (!ndviLimit(req.ip)) return res.status(429).json({ error: 'rate_limit' });
+
+    const token = await cdseToken();
+    const to = new Date(), from = new Date(Date.now() - days * 86400000);
+    let from_s = from.toISOString().slice(0, 19) + 'Z', to_s = to.toISOString().slice(0, 19) + 'Z', date = null, cloud = null;
+
+    // اختيار أفضل مشهد (اختياري): الأحدث بين المشاهد الأقل غيوماً، وإلا الأقل غيوماً
+    try {
+      const cr = await shPost(token, ['/api/v1/catalog/1.0.0/search'], { collections: ['sentinel-2-l2a'], datetime: from_s + '/' + to_s, bbox: [w, s, e, n], limit: 50 }, 'application/json');
+      if (cr && cr.ok) {
+        const feats = ((await cr.json()).features || []).map(f => ({ d: f.properties && f.properties.datetime, c: f.properties && f.properties['eo:cloud_cover'] })).filter(f => f.d && Number.isFinite(f.c));
+        const clear = feats.filter(f => f.c <= 30).sort((a, b) => b.d.localeCompare(a.d));
+        const pick = clear[0] || feats.sort((a, b) => a.c - b.c)[0];
+        if (pick) { date = pick.d.slice(0, 10); cloud = Math.round(pick.c); from_s = date + 'T00:00:00Z'; to_s = date + 'T23:59:59Z'; }
+      }
+    } catch (e) { /* نتابع بدون الكتالوج */ }
+
+    const W = Math.max(16, Math.min(1024, Math.round(wm / 10))), H = Math.max(16, Math.min(1024, Math.round(hm / 10)));
+    const ring = pts.slice(); if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push(ring[0]);
+    const body = {
+      input: {
+        bounds: { properties: { crs: 'http://www.opengis.net/def/crs/OGC/1.3/CRS84' }, bbox: [w, s, e, n], geometry: { type: 'Polygon', coordinates: [ring] } },
+        data: [{ type: 'sentinel-2-l2a', dataFilter: { timeRange: { from: from_s, to: to_s }, maxCloudCoverage: 80, mosaickingOrder: 'leastCC' } }]
+      },
+      output: { width: W, height: H, responses: [{ identifier: 'default', format: { type: 'image/png' } }] },
+      evalscript: NDVI_EVALSCRIPT
+    };
+    const pr = await shPost(token, ['/api/v1/process', '/process/v1'], body, 'image/png');
+    if (!pr || !pr.ok) {
+      const st = pr ? pr.status : 502; let msg = ''; try { msg = (await pr.text()).slice(0, 200); } catch (e) {}
+      console.error('[ndvi] process', st, msg);
+      return res.status(st === 401 || st === 403 ? 502 : (st === 429 ? 429 : 502)).json({ error: st === 429 ? 'quota' : 'upstream_' + st });
+    }
+    const buf = await pr.buffer();
+    const out = { png: 'data:image/png;base64,' + buf.toString('base64'), bbox: [w, s, e, n], size: [W, H], date, cloud, source: 'Sentinel-2 L2A' };
+    ndviCache.set(key, { t: Date.now(), v: out });
+    if (ndviCache.size > 50) ndviCache.delete(ndviCache.keys().next().value);
+    console.log(`[ndvi] ${W}x${H} date=${date} cloud=${cloud}`);
+    res.json(out);
+  } catch (e) {
+    console.error('[ndvi]', e.message);
+    res.status(e.message === 'auth' ? 502 : 500).json({ error: e.message === 'auth' ? 'auth_failed' : 'server_error' });
   }
 });
 
