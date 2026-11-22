@@ -109,8 +109,9 @@ body{font-size:17px}
 header{padding:10px 12px;gap:10px}
 .brand{font-size:22px;max-width:100%}
 nav{width:100%;margin-inline-start:0;flex-wrap:wrap;gap:6px}
-nav button{flex:1 1 44%;padding:10px 8px;font-size:15px;text-align:center}
-html,body{max-width:100%;overflow-x:hidden}
+nav button{flex:1 1 30%;padding:9px 6px;font-size:15px;text-align:center}
+html{overflow-x:hidden}
+body{max-width:100%}
 .brand small,.stat span{font-size:14px}
 .srv,.step p,.info,.card .en,.card p,.badge,.hrow small,.cmp th,.legend,dialog p,#aMsg,.log{font-size:16px!important}
 .btn,button,select,input{font-size:16px}
@@ -123,6 +124,9 @@ html,body{max-width:100%;overflow-x:hidden}
 .lvbox video{width:100%;height:auto;display:block}
 .lvbox canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .lvtbl{width:100%;border-collapse:collapse;margin-top:8px}.lvtbl td,.lvtbl th{padding:8px 10px;border-bottom:1px solid var(--line);text-align:start}
+.nd-bar{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:15px}.nd-bar i{width:14px;height:14px;border-radius:3px;flex:none}
+.nd-bar span.t{flex:1}.nd-bar b{min-width:44px;text-align:end}
+.nd-note{color:var(--dim);font-size:14px;margin-top:8px;line-height:1.7}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 dialog{background:var(--soil2);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:22px;width:min(380px,92vw);margin:auto}
 dialog::backdrop{background:rgba(0,0,0,.65)}
@@ -185,6 +189,13 @@ dialog .field-in{margin-bottom:10px}
       <input class="field-in" id="fname" placeholder="اسم الحقل (مثال: حقل الوادي)">
       <select id="myFields" class="field-in" style="margin-top:8px" hidden onchange="pickMyField(this.value)" aria-label="حقولي المحفوظة"><option value="">حقولي المحفوظة…</option></select>
       <div class="info"><span>المساحة: <b id="iArea">—</b></span><span>الإحداثيات: <b id="iCenter" style="direction:ltr;display:inline-block">—</b></span></div>
+    </div>
+
+    <div class="step">
+      <h3>صحة الحقل من القمر الصناعي</h3>
+      <p>صورة Sentinel-2 لحقلك (دقة 10 أمتار) تُظهر الأجزاء القوية والضعيفة، فتعرف أين تفحص أولاً.</p>
+      <button class="btn" id="bNdvi" onclick="ndviRun()" disabled>اعرض خريطة صحة الحقل</button>
+      <div id="ndviOut" aria-live="polite" style="margin-top:10px"></div>
     </div>
 
     <div class="step">
@@ -387,7 +398,7 @@ function finishDraw(){
 }
 function clearField(keepName){
   if(poly) map.removeLayer(poly); vtx.forEach(v=>map.removeLayer(v)); vtx=[]; poly=null; pts=[]; field=null;
-  clearZones(); $('iArea').textContent='—'; $('iCenter').textContent='—'; $('bGen').disabled=true; $('bLaunch').disabled=true;
+  clearZones(); $('iArea').textContent='—'; $('iCenter').textContent='—'; $('bGen').disabled=true; $('bNdvi').disabled=true; ndviClear(); $('bLaunch').disabled=true;
   if(!keepName) $('fname').value='';
 }
 function areaHa(p){
@@ -401,7 +412,7 @@ function setField(p,name){
   const c=[p.reduce((a,b)=>a+b[0],0)/p.length,p.reduce((a,b)=>a+b[1],0)/p.length];
   field={poly:p,center:c,area_ha:+areaHa(p).toFixed(2),name:name||'حقلي'};
   $('iArea').textContent=field.area_ha+' هكتار'; $('iCenter').textContent=c[0].toFixed(4)+', '+c[1].toFixed(4);
-  $('bGen').disabled=false; map.fitBounds(poly.getBounds(),{padding:[40,40],maxZoom:18});
+  $('bGen').disabled=false; $('bNdvi').disabled=false; ndviClear(); map.fitBounds(poly.getBounds(),{padding:[40,40],maxZoom:18});
   log(`تم تحديد الحقل: ${field.area_ha} هكتار.`,'ok');
 }
 async function searchPlace(e){
@@ -1094,6 +1105,56 @@ function liveSnap(){
   const k=Math.min(1,960/Math.max(v.videoWidth,v.videoHeight)), c=document.createElement('canvas'); c.width=Math.round(v.videoWidth*k); c.height=Math.round(v.videoHeight*k); c.getContext('2d').drawImage(v,0,0,c.width,c.height);
   const spots=[{label:'1',title:'لقطة مباشرة',dataUrl:c.toDataURL('image/jpeg',.85)}];
   showTab('guard'); renderGuard(window._lastTel||{},spots,'لقطة من الكاميرا المباشرة'); analyzeAll(spots);
+}
+
+/* ============== صحة الحقل من القمر الصناعي (NDVI) ============== */
+let ndviOv=null, ndviWeak=null;
+const NDVI_CLS=[[0.2,'#a63d2f','أرض جرداء أو نبات ضعيف جداً'],[0.4,'#d98e32','ضعيف'],[0.6,'#e6d04a','متوسط'],[0.8,'#9ccc4a','جيد'],[9,'#2f8f3a','قوي']];
+function ndviClear(){ try{ if(ndviOv){ map.removeLayer(ndviOv); ndviOv=null; } if(ndviWeak){ map.removeLayer(ndviWeak); ndviWeak=null; } }catch(e){} const o=$('ndviOut'); if(o) o.innerHTML=''; }
+function ndviErrText(m){
+  return ({not_configured:'خدمة القمر الصناعي غير مفعّلة على الخادم بعد (مفاتيح Copernicus غير مضبوطة).',auth_failed:'تعذّر الدخول إلى Copernicus. تأكد من المفتاح في إعدادات الخادم.',rate_limit:'تجاوزتَ عدد الطلبات المسموح. حاول بعد قليل.',quota:'استُهلكت حصة الطلبات مؤقتاً. حاول لاحقاً.',too_big:'الحقل كبير جداً لهذه الخدمة (أقصى حد نحو 12 كم).',too_small:'الحقل صغير جداً لقياس القمر الصناعي.',bad_polygon:'حدود الحقل غير صالحة أو خارج الجزائر.'})[m]||(/^upstream_/.test(m)?'لم يرد Copernicus على الطلب. حاول بعد قليل.':'تعذّر جلب الصورة. تأكد من الاتصال وحاول مرة أخرى.');
+}
+async function ndviRun(){
+  if(!field){ toast('ارسم حقلك أولاً.'); return; }
+  const b=$('bNdvi'), out=$('ndviOut'); b.disabled=true;
+  out.innerHTML='<p class="nd-note">جارٍ جلب أحدث صورة نظيفة من القمر الصناعي. قد يستغرق حتى دقيقة إن كان الخادم نائماً.</p>';
+  try{
+    const ctl=new AbortController(), tm=setTimeout(()=>ctl.abort(),90000);
+    const r=await fetch(SERVER+'/ndvi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({polygon:field.poly,days:30}),signal:ctl.signal}); clearTimeout(tm);
+    const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j.error||'http');
+    await ndviShow(j);
+  }catch(e){ out.innerHTML='<p class="nd-note">'+esc(ndviErrText(e.name==='AbortError'?'timeout':e.message))+'</p>'; }
+  b.disabled=false;
+}
+async function ndviShow(j){
+  const img=await loadImg(j.png), W=img.naturalWidth, H=img.naturalHeight;
+  const c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'); x.drawImage(img,0,0);
+  const d=x.getImageData(0,0,W,H), px=d.data, cnt=NDVI_CLS.map(()=>0); let sum=0,N=0;
+  const R=6, bs=new Array(R*R).fill(0), bn=new Array(R*R).fill(0);
+  for(let i=0;i<W*H;i++){
+    const a=px[i*4+3]; if(a<128){ px[i*4+3]=0; continue; }
+    const n=px[i*4]/255*1.2-0.2; sum+=n; N++;
+    let k=NDVI_CLS.findIndex(t=>n<t[0]); if(k<0) k=NDVI_CLS.length-1; cnt[k]++;
+    const col=NDVI_CLS[k][1]; px[i*4]=parseInt(col.slice(1,3),16); px[i*4+1]=parseInt(col.slice(3,5),16); px[i*4+2]=parseInt(col.slice(5,7),16); px[i*4+3]=215;
+    const bx=Math.min(R-1,Math.floor((i%W)/W*R)), by=Math.min(R-1,Math.floor(Math.floor(i/W)/H*R)); bs[by*R+bx]+=n; bn[by*R+bx]++;
+  }
+  ndviClear();
+  if(!N){ $('ndviOut').innerHTML='<p class="nd-note">لا توجد بكسلات صالحة (غيوم أو الحقل أصغر من دقة الصورة). جرّب لاحقاً.</p>'; return; }
+  x.putImageData(d,0,0);
+  const [w,s,e,n]=j.bbox; ndviOv=L.imageOverlay(c.toDataURL(),[[s,w],[n,e]],{opacity:.85}).addTo(map);
+  const mean=sum/N; let weak=null;
+  bs.forEach((v,k)=>{ if(bn[k]>=Math.max(12,N/(R*R)*.35)){ const m=v/bn[k]; if(!weak||m<weak.m) weak={m,k}; } });
+  let wtxt='';
+  if(weak&&weak.m<mean-0.08){
+    const bx=weak.k%R, by=Math.floor(weak.k/R), la=n-(by+.5)/R*(n-s), lo=w+(bx+.5)/R*(e-w);
+    ndviWeak=L.circleMarker([la,lo],{radius:16,color:'#d4603f',weight:3,fillOpacity:.1}).addTo(map).bindPopup('<div style="direction:rtl;text-align:right">منطقة أضعف من باقي الحقل. صوّر الأوراق هنا أولاً.</div>');
+    wtxt='<p class="nd-note">الدائرة الحمراء على الخريطة تدل على أضعف منطقة. ابدأ فحصك بها.</p>';
+  }
+  const dt=j.date?`صورة بتاريخ ${esc(j.date)}${j.cloud!=null?` · غيوم المشهد ${esc(j.cloud)}%`:''}`:'أقل صورة غيوماً خلال آخر 30 يوماً';
+  $('ndviOut').innerHTML=`<p class="nd-note" style="margin-top:0">${dt}. المتوسط <b>${mean.toFixed(2)}</b></p>`+
+    NDVI_CLS.map((t,k)=>`<div class="nd-bar"><i style="background:${t[1]}"></i><span class="t">${t[2]}</span><b>${Math.round(100*cnt[k]/N)}%</b></div>`).join('')+wtxt+
+    '<p class="nd-note">المؤشر يقيس خضرة النبات فقط ولا يحدد السبب (مرض أو عطش أو نقص تسميد). وفي بداية الموسم تكون القيم المنخفضة طبيعية. الغيوم والظلال مستبعدة.</p>';
+  try{ map.fitBounds([[s,w],[n,e]],{padding:[30,30],maxZoom:18}); }catch(err){}
 }
 initSupabase();
 </script>
