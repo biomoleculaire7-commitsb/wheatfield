@@ -147,6 +147,10 @@ dialog .field-in{margin-bottom:10px}
 #gmapWrap{margin-bottom:6px}
 .card{cursor:pointer}
 .card.hl{outline:2px solid var(--wheat);outline-offset:2px}
+body.simple #nb-hist,body.simple #nb-live,body.simple #nb-eval,body.simple #tab-guard .bar:nth-of-type(n+2),body.simple #tel,body.simple #tab-field .stats,body.simple .card .en,body.simple .tech{display:none!important}
+body.simple .btn{font-size:1.1em;padding:14px 16px}
+.pbar{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:.95em}.pbar .t{min-width:78px}.pbar .b{flex:1;height:10px;border-radius:6px;background:rgba(128,128,128,.25);overflow:hidden}.pbar .b i{display:block;height:100%;background:#d4603f}.pbar.ok .b i{background:#7fbf45}.pbar b{min-width:38px;text-align:left}
+.disc{margin:12px 0;font-size:.9em;opacity:.8;text-align:center}
 </style>
 </head>
 <body>
@@ -159,6 +163,7 @@ dialog .field-in{margin-bottom:10px}
     <button id="nb-live" onclick="showTab('live')">كاميرا مباشرة</button>
     <button id="nb-eval" onclick="showTab('eval')">اختبار الدقة</button>
   </nav>
+  <button class="chip" id="modeBtn" onclick="toggleMode()">وضع الفلاح</button>
   <button class="chip" id="installBtn" onclick="installApp()" hidden>ثبّت التطبيق</button>
   <button class="chip" id="authBtn" onclick="openAuth()" hidden>تسجيل الدخول</button>
   <div class="srv"><span class="dot" id="srvDot"></span><span id="srvTxt">فحص الخادم…</span></div>
@@ -208,6 +213,8 @@ dialog .field-in{margin-bottom:10px}
         <button class="btn" id="bGen" onclick="genZones()" disabled>وزّع النقاط</button>
       </div>
       <label class="btn" style="display:inline-block;margin-top:10px">ارفع صور كل النقاط دفعة واحدة<input type="file" id="bulk" accept="image/*,video/*" multiple hidden></label>
+      <div class="row" style="margin-top:10px"><button class="btn" id="bGps" onclick="gpsToggle()">📍 ابدأ المسار بالـGPS</button></div>
+      <div id="gpsOut" class="nd-note" aria-live="polite" style="margin-top:8px"></div>
       <div class="zones" id="zones"></div>
     </div>
 
@@ -254,6 +261,7 @@ dialog .field-in{margin-bottom:10px}
   <div class="summary" id="summary"></div>
   <button class="btn" id="bReport" hidden onclick="makeReport()" style="margin-bottom:14px">تقرير للطباعة / حفظ PDF</button>
   <div class="cards" id="cards"><div class="empty" style="grid-column:1/-1">أطلق الدرون من تبويب WheatField أو استقبل آخر بيانات من الخادم لتبدأ عملية الكشف.</div></div>
+  <p class="disc">هذه نتيجة مساعدة وليست تشخيصاً نهائياً. عند الشك استشر مختصاً زراعياً.</p>
 </div>
 </div>
 
@@ -445,12 +453,26 @@ function genZones(){
   const [a,b,c,d]=[Math.min(...la),Math.max(...la),Math.min(...lo),Math.max(...lo)], K=7, cand=[];
   for(let i=0;i<K;i++)for(let j=0;j<K;j++){ const p=[a+(b-a)*(i+.5)/K, c+(d-c)*(j+.5)/K]; if(inside(p,field.poly)) cand.push(p); }
   if(!cand.length) cand.push(field.center);
-  const pick=[]; for(let i=0;i<Math.min(n,cand.length);i++) pick.push(cand[Math.floor(i*cand.length/Math.min(n,cand.length))]);
+  let pick=[], smart=false;
+  if(ndviGrid&&cand.length>n){
+    smart=true; const [gw,gs,ge,gn]=ndviGrid.bbox, R=ndviGrid.R;
+    const sc=p=>{ const bx=Math.max(0,Math.min(R-1,Math.floor((p[1]-gw)/(ge-gw)*R))), by=Math.max(0,Math.min(R-1,Math.floor((gn-p[0])/(gn-gs)*R))); const v=ndviGrid.m[by*R+bx]; return v==null?ndviGrid.mean:v; };
+    const sorted=cand.map(p=>({p,v:sc(p)})).sort((x,y)=>x.v-y.v), gap=Math.min((b-a)/K,(d-c)/K)*1.2;
+    const far=q=>pick.every(r=>Math.hypot(q[0]-r[0],q[1]-r[1])>=gap);
+    const nWeak=n>=3?n-1:n;
+    for(const o of sorted){ if(pick.length>=nWeak) break; if(far(o.p)) pick.push(o.p); }
+    for(const o of sorted){ if(pick.length>=nWeak) break; if(!pick.includes(o.p)) pick.push(o.p); }
+    if(n>=3){ for(const o of sorted.slice().reverse()){ if(far(o.p)){ pick.push(o.p); break; } } if(pick.length<n) pick.push(sorted[sorted.length-1].p); }
+    const route=[pick.shift()]; while(pick.length){ const l=route[route.length-1]; let bi=0,bd=1e9; pick.forEach((q,i)=>{ const dd=Math.hypot(q[0]-l[0],q[1]-l[1]); if(dd<bd){bd=dd;bi=i;} }); route.push(pick.splice(bi,1)[0]); }
+    pick=route;
+  } else { for(let i=0;i<Math.min(n,cand.length);i++) pick.push(cand[Math.floor(i*cand.length/Math.min(n,cand.length))]); }
   zones=pick.map((p,i)=>{ const z={label:'ABCDEF'[i],lat:p[0],lng:p[1],blob:null,dataUrl:null};
     z.marker=L.marker(p,{icon:L.divIcon({className:'',html:`<div class="zp">${z.label}</div>`,iconSize:[28,28],iconAnchor:[14,14]})}).addTo(map); return z; });
-  renderZones(); log(`وُزّعت ${zones.length} نقاط فحص.`,'ok');
+  if(zones.length>1) routeLn=L.polyline(zones.map(z=>[z.lat,z.lng]),{color:'#d4603f',weight:3,dashArray:'6 6'}).addTo(map);
+  renderZones(); log(smart?`وُزّعت ${zones.length} نقاط حسب ضعف الخضرة (A هي الأضعف، وآخر نقطة للمقارنة) بترتيب مسار المشي.`:`وُزّعت ${zones.length} نقاط فحص. اعرض خريطة صحة الحقل أولاً لتوزَّع النقاط على الأماكن الأضعف.`,'ok');
 }
-function clearZones(){ zones.forEach(z=>z.marker&&map.removeLayer(z.marker)); zones=[]; if(droneMk){map.removeLayer(droneMk);droneMk=null;} renderZones(); }
+let routeLn=null;
+function clearZones(){ zones.forEach(z=>z.marker&&map.removeLayer(z.marker)); zones=[]; if(routeLn){map.removeLayer(routeLn);routeLn=null;} if(droneMk){map.removeLayer(droneMk);droneMk=null;} renderZones(); }
 function setMk(z,state){ z.marker.setIcon(L.divIcon({className:'',html:`<div class="zp ${state}">${z.label}</div>`,iconSize:[28,28],iconAnchor:[14,14]})); }
 function renderZones(){
   const box=$('zones'); box.innerHTML='';
@@ -659,6 +681,29 @@ function renderGuard(t,spots,from){
   }
   r.hidden=!m; if(m) r.textContent='مؤشر الطقس: '+m;
 }
+/* ============== وضع الفلاح وجودة الصورة ============== */
+const CONF_SURE=0.5;
+let SIMPLE=false;
+function setMode(v){ SIMPLE=v; document.body.classList.toggle('simple',v); const b=$('modeBtn'); if(b) b.textContent=v?'وضع المختص':'وضع الفلاح'; const l=$('bLaunch'); if(l) l.textContent=v?'حلّل الصور':'أطلق الدرون وأرسل الصور إلى WheatGuard'; try{ localStorage.setItem('wgSimple',v?'1':'0'); }catch(e){} if(v&&['hist','live','eval'].some(t=>$('tab-'+t).classList.contains('on'))) showTab('field'); }
+function toggleMode(){ setMode(!SIMPLE); }
+function imgQuality(src){
+  const c=document.createElement('canvas'), k=256/Math.max(src.naturalWidth||src.width,src.naturalHeight||src.height,1); c.width=Math.max(8,Math.round((src.naturalWidth||src.width)*k)); c.height=Math.max(8,Math.round((src.naturalHeight||src.height)*k));
+  const x=c.getContext('2d'); x.drawImage(src,0,0,c.width,c.height); const d=x.getImageData(0,0,c.width,c.height).data, W=c.width, H=c.height, g=new Float32Array(W*H); let sum=0;
+  for(let i=0;i<W*H;i++){ g[i]=.299*d[i*4]+.587*d[i*4+1]+.114*d[i*4+2]; sum+=g[i]; }
+  const mean=sum/(W*H); let lm=0,ls=0,n=0; for(let y=1;y<H-1;y++)for(let xx=1;xx<W-1;xx++){ const i=y*W+xx, l=4*g[i]-g[i-1]-g[i+1]-g[i-W]-g[i+W]; lm+=l; ls+=l*l; n++; }
+  const v=ls/n-(lm/n)**2; return {mean,blur:v};
+}
+function qualityMsg(q){
+  if(q.mean<35) return {bad:true,msg:'الصورة مظلمة جداً. صوّر في ضوء النهار وأعد المحاولة.'};
+  if(q.mean>235) return {bad:true,msg:'الصورة مبيّضة من شدة الضوء. غيّر الزاوية وأعد التصوير.'};
+  if(q.blur<12) return {bad:true,msg:'الصورة مهزوزة أو غير واضحة. ثبّت يدك وصوّر الورقة من قريب.'};
+  if(q.blur<60) return {bad:false,msg:'الصورة ليست حادة تماماً، وقد تقل دقة النتيجة. الأفضل إعادة التصوير من قريب.'};
+  return null;
+}
+function topClasses(res){
+  const m={}; (res.all&&res.all.length?res.all:[res]).forEach(d=>{ const e=LABELS[d.idx]; if(e&&(!m[e]||d.conf>m[e])) m[e]=d.conf; });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,3);
+}
 async function analyzeAll(spots,opts){
   const box=$('cards'); box.innerHTML=''; $('summary').textContent=''; $('bReport').hidden=true;
   let sick=0,healthy=0,unk=0;
@@ -668,23 +713,27 @@ async function analyzeAll(spots,opts){
     card.innerHTML=`<canvas></canvas><div class="body"><h4>${s.title||('النقطة '+s.label)}</h4><div class="en">جارٍ التحليل…</div></div>`; box.appendChild(card);
     const img=await loadImg(s.dataUrl), cv=card.querySelector('canvas'), k=Math.min(1,720/img.naturalWidth);
     cv.width=img.naturalWidth*k; cv.height=img.naturalHeight*k; const x=cv.getContext('2d'); x.drawImage(img,0,0,cv.width,cv.height);
-    let res=null,msg='';
-    if(!sess) msg='النموذج غير محمّل. اختر ملف النموذج (tflite) من الأعلى.';
+    let res=null,msg='',qm=qualityMsg(imgQuality(img));
+    if(qm&&qm.bad){ msg=qm.msg; }
+    else if(!sess) msg='النموذج غير محمّل. اختر ملف النموذج (tflite) من الأعلى.';
     else{ try{ res=await infer(img); }catch(e){ msg='تعذّر تشغيل النموذج على هذه الصورة.'; } }
     if(res&&res.all&&res.all.length){ const sd=res.all.find(d=>!isHealthy(LABELS[d.idx])); if(sd) res={...sd,all:res.all}; }
     let state='unk',name='غير مؤكد',en='',tr='',conf='',cnum=null;
     if(res){
-      if(res.conf>=THRESH&&res.idx>=0){
+      if(res.conf>=CONF_SURE&&res.idx>=0){
         en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; cnum=res.conf; conf=Math.round(res.conf*100)+'%';
         state=isHealthy(en)?'ok':'sick'; if(state==='sick') sick++; else healthy++;
         const dl=(res.all&&res.all.length)?res.all:[res]; x.lineWidth=3; x.font='bold '+Math.max(13,cv.width/38)+'px sans-serif'; x.textBaseline='bottom';
-        dl.forEach(d=>{ if(!d.box) return; const e2=LABELS[d.idx]||'', col=isHealthy(e2)?'#7fbf45':'#d4603f'; x.strokeStyle=col; x.strokeRect(d.box[0]*k,d.box[1]*k,d.box[2]*k,d.box[3]*k);
+        if(!SIMPLE) dl.forEach(d=>{ if(!d.box) return; const e2=LABELS[d.idx]||'', col=isHealthy(e2)?'#7fbf45':'#d4603f'; x.strokeStyle=col; x.strokeRect(d.box[0]*k,d.box[1]*k,d.box[2]*k,d.box[3]*k);
           const tx=e2+' '+Math.round(d.conf*100)+'%', tw=x.measureText(tx).width+8, ty=Math.max(d.box[1]*k,Math.max(13,cv.width/38)+4); x.fillStyle=col; x.fillRect(d.box[0]*k,ty-Math.max(13,cv.width/38)-4,tw,Math.max(13,cv.width/38)+6); x.fillStyle='#10140c'; x.fillText(tx,d.box[0]*k+4,ty); });
         if(dl.length>1) tr=(tr?tr+' ':'')+'عدد المواضع المكتشفة: '+dl.length+' ('+sumDet(dl)+').';
-      }else{ msg='لم يتأكد النموذج من أي مرض (الثقة أقل من 25%). جرّب صورة أقرب للورقة.'; unk++; }
-    }
+      }else{ msg='النتيجة غير واضحة. أعد التصوير من قريب أو استشر مختصاً.'; unk++; }
+    } else if(qm&&qm.bad) unk++;
     s.res={en,name,conf:cnum,state,box:(res&&state!=='unk'&&res.box)?res.box.map(v=>Math.round(v)):null};
-    card.querySelector('.body').innerHTML=`<h4>${s.title||('النقطة '+s.label)}: ${name}</h4><div class="en">${en}</div><span class="badge ${state}">${conf?('الثقة '+conf):'بلا نتيجة'}</span><p>${tr||msg}</p>`;
+    const bars=res&&!(qm&&qm.bad)?topClasses(res).map(([e,c])=>`<div class="pbar ${isHealthy(e)?'ok':''}"><span class="t">${esc(AR[e]||e)}</span><span class="b"><i style="width:${Math.round(c*100)}%"></i></span><b>${Math.round(c*100)}%</b></div>`).join(''):'';
+    const lead=state==='unk'?'غير مؤكد':(state==='sick'?'الأرجح: '+name:'تبدو سليمة');
+    const qw=(qm&&!qm.bad)?`<p style="color:#d4603f">${qm.msg}</p>`:'';
+    card.querySelector('.body').innerHTML=`<h4>${s.title||('النقطة '+s.label)}: ${lead}</h4><div class="en">${en}</div>${bars}<p>${state==='unk'?msg:tr}</p>${qw}`;
     if(s.zone) setMk(s.zone,state);
     gmapUpdate(spots.indexOf(s));
   }
@@ -1110,7 +1159,8 @@ function liveSnap(){
 /* ============== صحة الحقل من القمر الصناعي (NDVI) ============== */
 let ndviOv=null, ndviWeak=null;
 const NDVI_CLS=[[0.2,'#a63d2f','أرض جرداء أو نبات ضعيف جداً'],[0.4,'#d98e32','ضعيف'],[0.6,'#e6d04a','متوسط'],[0.8,'#9ccc4a','جيد'],[9,'#2f8f3a','قوي']];
-function ndviClear(){ try{ if(ndviOv){ map.removeLayer(ndviOv); ndviOv=null; } if(ndviWeak){ map.removeLayer(ndviWeak); ndviWeak=null; } }catch(e){} const o=$('ndviOut'); if(o) o.innerHTML=''; }
+let ndviGrid=null;
+function ndviClear(){ ndviGrid=null; try{ if(ndviOv){ map.removeLayer(ndviOv); ndviOv=null; } if(ndviWeak){ map.removeLayer(ndviWeak); ndviWeak=null; } }catch(e){} const o=$('ndviOut'); if(o) o.innerHTML=''; }
 function ndviErrText(m){
   return ({not_configured:'خدمة القمر الصناعي غير مفعّلة على الخادم بعد (مفاتيح Copernicus غير مضبوطة).',auth_failed:'تعذّر الدخول إلى Copernicus. تأكد من المفتاح في إعدادات الخادم.',rate_limit:'تجاوزتَ عدد الطلبات المسموح. حاول بعد قليل.',quota:'استُهلكت حصة الطلبات مؤقتاً. حاول لاحقاً.',too_big:'الحقل كبير جداً لهذه الخدمة (أقصى حد نحو 12 كم).',too_small:'الحقل صغير جداً لقياس القمر الصناعي.',bad_polygon:'حدود الحقل غير صالحة أو خارج الجزائر.'})[m]||(/^upstream_/.test(m)?'لم يرد Copernicus على الطلب. حاول بعد قليل.':'تعذّر جلب الصورة. تأكد من الاتصال وحاول مرة أخرى.');
 }
@@ -1125,6 +1175,34 @@ async function ndviRun(){
     await ndviShow(j);
   }catch(e){ out.innerHTML='<p class="nd-note">'+esc(ndviErrText(e.name==='AbortError'?'timeout':e.message))+'</p>'; }
   b.disabled=false;
+}
+/* ============== مسار GPS ============== */
+let gpsId=null, gpsMk=null, gpsLn=null;
+function hav(a,b,c,d){ const R=6371000,t=Math.PI/180,x=(c-a)*t,y=(d-b)*t,q=Math.sin(x/2)**2+Math.cos(a*t)*Math.cos(c*t)*Math.sin(y/2)**2; return 2*R*Math.asin(Math.sqrt(q)); }
+function brg(a,b,c,d){ const t=Math.PI/180,y=Math.sin((d-b)*t)*Math.cos(c*t),x=Math.cos(a*t)*Math.sin(c*t)-Math.sin(a*t)*Math.cos(c*t)*Math.cos((d-b)*t); return (Math.atan2(y,x)/t+360)%360; }
+function dirAr(b){ return ['الشمال','الشمال الشرقي','الشرق','الجنوب الشرقي','الجنوب','الجنوب الغربي','الغرب','الشمال الغربي'][Math.round(b/45)%8]; }
+function gpsToggle(){
+  if(gpsId!=null){ gpsStop(); return; }
+  if(!zones.length){ $('gpsOut').textContent='وزّع النقاط أولاً.'; return; }
+  if(!navigator.geolocation){ $('gpsOut').textContent='هذا المتصفح لا يدعم تحديد الموقع.'; return; }
+  $('gpsOut').textContent='جارٍ تحديد موقعك…'; $('bGps').textContent='⏹ أوقف المسار';
+  gpsId=navigator.geolocation.watchPosition(gpsUpdate,e=>{ $('gpsOut').textContent=e.code===1?'لم يُسمح بالموقع. فعّل إذن الموقع للموقع من إعدادات المتصفح.':'تعذّر تحديد الموقع. اخرج إلى مكان مفتوح وحاول مجدداً.'; gpsStop(true); },{enableHighAccuracy:true,maximumAge:3000,timeout:20000});
+}
+function gpsStop(keepMsg){
+  if(gpsId!=null){ navigator.geolocation.clearWatch(gpsId); gpsId=null; }
+  try{ if(gpsMk){map.removeLayer(gpsMk);gpsMk=null;} if(gpsLn){map.removeLayer(gpsLn);gpsLn=null;} }catch(e){}
+  const b=$('bGps'); if(b) b.textContent='📍 ابدأ المسار بالـGPS'; if(!keepMsg&&$('gpsOut')) $('gpsOut').textContent='';
+}
+function gpsUpdate(pos){
+  const la=pos.coords.latitude, lo=pos.coords.longitude, ac=Math.round(pos.coords.accuracy||0);
+  if(!gpsMk) gpsMk=L.circleMarker([la,lo],{radius:8,color:'#1a73e8',fillColor:'#1a73e8',fillOpacity:.9}).addTo(map); else gpsMk.setLatLng([la,lo]);
+  const left=zones.filter(z=>!z.blob);
+  if(!left.length){ $('gpsOut').innerHTML='✅ كل النقاط لها صور. اضغط «أرسل» في الخطوة التالية.'; if(gpsLn){map.removeLayer(gpsLn);gpsLn=null;} return; }
+  let t=left[0],bd=1e12; left.forEach(z=>{ const d=hav(la,lo,z.lat,z.lng); if(d<bd){bd=d;t=z;} });
+  if(gpsLn) gpsLn.setLatLngs([[la,lo],[t.lat,t.lng]]); else gpsLn=L.polyline([[la,lo],[t.lat,t.lng]],{color:'#1a73e8',weight:3}).addTo(map);
+  const warn=ac>30?` <span style="color:#d4603f">(دقة الموقع ضعيفة: ±${ac} م)</span>`:'';
+  if(bd<=15) $('gpsOut').innerHTML=`🎯 <b>وصلت إلى النقطة ${t.label}.</b> صوّر الأوراق من قريب ثم اضغط «كاميرا» في بطاقتها.${warn}`;
+  else $('gpsOut').innerHTML=`🚶 النقطة التالية: <b>${t.label}</b> · تبعد <b>${bd>=1000?(bd/1000).toFixed(1)+' كم':Math.round(bd)+' م'}</b> نحو <b>${dirAr(brg(la,lo,t.lat,t.lng))}</b>.${warn}`;
 }
 function ndviKey(b){ return 'ndviHist:'+[(b[0]+b[2])/2,(b[1]+b[3])/2].map(v=>v.toFixed(3)).join(','); }
 function ndviHistSave(date,mean,b){
@@ -1164,6 +1242,7 @@ async function ndviShow(j){
   x.putImageData(d,0,0);
   const [w,s,e,n]=j.bbox; ndviOv=L.imageOverlay(c.toDataURL(),[[s,w],[n,e]],{opacity:.85}).addTo(map);
   const mean=sum/N; let weak=null;
+  ndviGrid={bbox:j.bbox,R,mean,m:bs.map((v,k)=>bn[k]>=Math.max(12,N/(R*R)*.35)?v/bn[k]:null)};
   bs.forEach((v,k)=>{ if(bn[k]>=Math.max(12,N/(R*R)*.35)){ const m=v/bn[k]; if(!weak||m<weak.m) weak={m,k}; } });
   let wtxt='';
   if(weak&&weak.m<mean-0.08){
@@ -1182,6 +1261,7 @@ async function ndviShow(j){
     '<p class="nd-note">المؤشر يقيس خضرة النبات فقط ولا يحدد السبب (مرض أو عطش أو نقص تسميد). وفي بداية الموسم تكون القيم المنخفضة طبيعية. الغيوم والظلال مستبعدة.</p>';
   try{ map.fitBounds([[s,w],[n,e]],{padding:[30,30],maxZoom:18}); }catch(err){}
 }
+try{ if(localStorage.getItem('wgSimple')==='1') setMode(true); }catch(e){}
 initSupabase();
 </script>
 </body>
