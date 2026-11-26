@@ -1126,6 +1126,27 @@ async function ndviRun(){
   }catch(e){ out.innerHTML='<p class="nd-note">'+esc(ndviErrText(e.name==='AbortError'?'timeout':e.message))+'</p>'; }
   b.disabled=false;
 }
+function ndviKey(b){ return 'ndviHist:'+[(b[0]+b[2])/2,(b[1]+b[3])/2].map(v=>v.toFixed(3)).join(','); }
+function ndviHistSave(date,mean,b){
+  let h=[]; const k=ndviKey(b);
+  try{ h=JSON.parse(localStorage.getItem(k)||'[]'); }catch(e){}
+  h=h.filter(r=>r.d!==date); h.push({d:date,m:+mean.toFixed(3)}); h.sort((x,y)=>x.d<y.d?-1:1); h=h.slice(-30);
+  try{ localStorage.setItem(k,JSON.stringify(h)); }catch(e){}
+  return h;
+}
+function ndviTrend(h){
+  if(h.length<2) return {icon:'🌱',bg:'rgba(120,120,120,.12)',msg:'هذا أول فحص محفوظ لحقلك. افحص مرة كل أسبوع أو أسبوعين لنقارن ونخبرك إن تحسّن أو ضعف.'};
+  const c=h[h.length-1], p=h[h.length-2], df=c.m-p.m;
+  if(df>0.03) return {icon:'🟢',bg:'rgba(60,160,80,.15)',msg:'حقلك أفضل من الفحص السابق.'};
+  if(df<-0.03) return {icon:'🔴',bg:'rgba(212,96,63,.18)',msg:'حقلك أضعف من الفحص السابق. تفقّده وصوّر الأوراق.'};
+  return {icon:'🟡',bg:'rgba(230,180,40,.18)',msg:'حقلك ثابت ولم يتغير كثيراً. استمر في المراقبة.'};
+}
+function ndviSpark(h){
+  if(h.length<2) return '<p class="nd-note">لا توجد نقاط كافية بعد.</p>';
+  const W=280,H=80,mn=Math.min(...h.map(r=>r.m))-.05,mx=Math.max(...h.map(r=>r.m))+.05;
+  const pts=h.map((r,i)=>[10+i/(h.length-1)*(W-20),H-8-(r.m-mn)/(mx-mn)*(H-16)]);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:340px;direction:ltr"><polyline fill="none" stroke="#3a8a4a" stroke-width="2" points="${pts.map(q=>q.join(',')).join(' ')}"/>${pts.map(q=>`<circle cx="${q[0]}" cy="${q[1]}" r="3.5" fill="#3a8a4a"/>`).join('')}</svg><p class="nd-note">من ${esc(h[0].d)} (${h[0].m}) إلى ${esc(h[h.length-1].d)} (${h[h.length-1].m}). السجل محفوظ في هذا المتصفح فقط.</p>`;
+}
 async function ndviShow(j){
   const img=await loadImg(j.png), W=img.naturalWidth, H=img.naturalHeight;
   const c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'); x.drawImage(img,0,0);
@@ -1150,8 +1171,13 @@ async function ndviShow(j){
     ndviWeak=L.circleMarker([la,lo],{radius:16,color:'#d4603f',weight:3,fillOpacity:.1}).addTo(map).bindPopup('<div style="direction:rtl;text-align:right">منطقة أضعف من باقي الحقل. صوّر الأوراق هنا أولاً.</div>');
     wtxt='<p class="nd-note">الدائرة الحمراء على الخريطة تدل على أضعف منطقة. ابدأ فحصك بها.</p>';
   }
+  const hist=ndviHistSave(j.date||new Date().toISOString().slice(0,10),mean,j.bbox);
+  const trend=ndviTrend(hist);
+  const act=weak&&weak.m<mean-0.08?'<button class="btn" style="margin-top:8px" onclick="showTab(\'guard\')">📷 صوّر الموضع الأضعف</button>':'';
+  const tbox=`<div style="border-radius:12px;padding:12px;margin-bottom:10px;background:${trend.bg};font-size:1.05em"><b>${trend.icon} ${trend.msg}</b>${act}</div>`;
+  const spark=ndviSpark(hist);
   const dt=j.date?`صورة بتاريخ ${esc(j.date)}${j.cloud!=null?` · غيوم المشهد ${esc(j.cloud)}%`:''}`:'أقل صورة غيوماً خلال آخر 30 يوماً';
-  $('ndviOut').innerHTML=`<p class="nd-note" style="margin-top:0">${dt}. المتوسط <b>${mean.toFixed(2)}</b></p>`+
+  $('ndviOut').innerHTML=tbox+`<details><summary style="cursor:pointer;margin-bottom:6px">تفاصيل للمختص</summary>${spark}</details>`+`<p class="nd-note" style="margin-top:0">${dt}. المتوسط <b>${mean.toFixed(2)}</b></p>`+
     NDVI_CLS.map((t,k)=>`<div class="nd-bar"><i style="background:${t[1]}"></i><span class="t">${t[2]}</span><b>${Math.round(100*cnt[k]/N)}%</b></div>`).join('')+wtxt+
     '<p class="nd-note">المؤشر يقيس خضرة النبات فقط ولا يحدد السبب (مرض أو عطش أو نقص تسميد). وفي بداية الموسم تكون القيم المنخفضة طبيعية. الغيوم والظلال مستبعدة.</p>';
   try{ map.fitBounds([[s,w],[n,e]],{padding:[30,30],maxZoom:18}); }catch(err){}
