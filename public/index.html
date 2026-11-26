@@ -460,7 +460,7 @@ async function genZones(){
   if(ndviGrid&&cand.length>n){
     smart=true; const [gw,gs,ge,gn]=ndviGrid.bbox, R=ndviGrid.R;
     const sc=p=>{ const bx=Math.max(0,Math.min(R-1,Math.floor((p[1]-gw)/(ge-gw)*R))), by=Math.max(0,Math.min(R-1,Math.floor((gn-p[0])/(gn-gs)*R))); const v=ndviGrid.m[by*R+bx]; return v==null?ndviGrid.mean:v; };
-    const sorted=cand.map(p=>({p,v:sc(p)})).sort((x,y)=>x.v-y.v), gap=Math.min((b-a)/K,(d-c)/K)*1.2;
+    const sorted=cand.map(p=>({p,v:sc(p)})).sort((x,y)=>x.v-y.v), gap=Math.min((b-a)/K,(d-c)/K)*1.8;
     const far=q=>pick.every(r=>Math.hypot(q[0]-r[0],q[1]-r[1])>=gap);
     const nWeak=n>=3?n-1:n;
     for(const o of sorted){ if(pick.length>=nWeak) break; if(far(o.p)) pick.push(o.p); }
@@ -685,7 +685,7 @@ function renderGuard(t,spots,from){
   r.hidden=!m; if(m) r.textContent='مؤشر الطقس: '+m;
 }
 /* ============== وضع الفلاح وجودة الصورة ============== */
-const CONF_SURE=0.5;
+const CONF_SURE=0.6, MARGIN=0.15;
 let SIMPLE=false;
 function setMode(v){ SIMPLE=v; document.body.classList.toggle('simple',v); const b=$('modeBtn'); if(b) b.textContent=v?'وضع المختص':'وضع الفلاح';
   const l=$('bLaunch'); if(l) l.textContent=v?'حلّل الصور':'أطلق الدرون وأرسل الصور إلى WheatGuard';
@@ -717,7 +717,7 @@ function topClasses(res){
 }
 async function analyzeAll(spots,opts){
   const box=$('cards'); box.innerHTML=''; $('summary').textContent=''; $('bReport').hidden=true;
-  let sick=0,healthy=0,unk=0;
+  let sick=0,healthy=0,unk=0,maybeN=0;
   gmapInit(spots,opts&&opts.fieldCtx);
   for(const s of spots){
     const card=document.createElement('div'); card.className='card'; const si=spots.indexOf(s); card.id='card-'+si; card.onclick=()=>gmapFocus(si,false);
@@ -729,28 +729,30 @@ async function analyzeAll(spots,opts){
     else if(!sess) msg='النموذج غير محمّل. اختر ملف النموذج (tflite) من الأعلى.';
     else{ try{ res=await infer(img); }catch(e){ msg='تعذّر تشغيل النموذج على هذه الصورة.'; } }
     if(res&&res.all&&res.all.length){ const sd=res.all.find(d=>!isHealthy(LABELS[d.idx])); if(sd) res={...sd,all:res.all}; }
-    let state='unk',name='غير مؤكد',en='',tr='',conf='',cnum=null;
+    let state='unk',name='غير مؤكد',en='',tr='',conf='',cnum=null,tier='sure';
     if(res){
-      if(res.conf>=CONF_SURE&&res.idx>=0){
+      if(res.conf>=THRESH&&res.idx>=0){
         en=LABELS[res.idx]||('Class '+res.idx); name=AR[en]||en; tr=TREAT[en]||''; cnum=res.conf; conf=Math.round(res.conf*100)+'%';
-        state=isHealthy(en)?'ok':'sick'; if(state==='sick') sick++; else healthy++;
+        const oth=Math.max(0,...topClasses(res).filter(([e])=>e!==en).map(x=>x[1]));
+        tier=((res.conf>=CONF_SURE&&res.conf-oth>=MARGIN)||res.conf>=0.8)&&!(qm&&!qm.bad)?'sure':'maybe'; if(tier==='maybe'){ tr=''; maybeN++; }
+        state=isHealthy(en)?'ok':'sick'; if(tier==='maybe'){} else if(state==='sick') sick++; else healthy++;
         const dl=(res.all&&res.all.length)?res.all:[res]; x.lineWidth=3; x.font='bold '+Math.max(13,cv.width/38)+'px sans-serif'; x.textBaseline='bottom';
         if(!SIMPLE) dl.forEach(d=>{ if(!d.box) return; const e2=LABELS[d.idx]||'', col=isHealthy(e2)?'#7fbf45':'#d4603f'; x.strokeStyle=col; x.strokeRect(d.box[0]*k,d.box[1]*k,d.box[2]*k,d.box[3]*k);
           const tx=e2+' '+Math.round(d.conf*100)+'%', tw=x.measureText(tx).width+8, ty=Math.max(d.box[1]*k,Math.max(13,cv.width/38)+4); x.fillStyle=col; x.fillRect(d.box[0]*k,ty-Math.max(13,cv.width/38)-4,tw,Math.max(13,cv.width/38)+6); x.fillStyle='#10140c'; x.fillText(tx,d.box[0]*k+4,ty); });
         if(dl.length>1) tr=(tr?tr+' ':'')+'عدد المواضع المكتشفة: '+dl.length+' ('+sumDet(dl)+').';
       }else{ msg='النتيجة غير واضحة. أعد التصوير من قريب أو استشر مختصاً.'; unk++; }
     } else if(qm&&qm.bad) unk++;
-    s.res={en,name,conf:cnum,state,box:(res&&state!=='unk'&&res.box)?res.box.map(v=>Math.round(v)):null};
+    s.res={en,name,conf:cnum,state,tier,box:(res&&state!=='unk'&&res.box)?res.box.map(v=>Math.round(v)):null};
     const bars=res&&!(qm&&qm.bad)?topClasses(res).map(([e,c])=>`<div class="pbar ${isHealthy(e)?'ok':''}"><span class="t">${esc(AR[e]||e)}</span><span class="b"><i style="width:${Math.round(c*100)}%"></i></span><b>${Math.round(c*100)}%</b></div>`).join(''):'';
-    const lead=state==='unk'?'غير مؤكد':(state==='sick'?'الأرجح: '+name:'تبدو سليمة');
+    const lead=state==='unk'?'غير مؤكد':(tier==='maybe'?'محتمل: '+(state==='sick'?name:'سليمة')+' (يحتاج تأكيداً)':(state==='sick'?'الأرجح: '+name:'تبدو سليمة'));
     const qw=(qm&&!qm.bad)?`<p style="color:#d4603f">${qm.msg}</p>`:'';
-    card.querySelector('.body').innerHTML=`<h4>${s.title||('النقطة '+s.label)}: ${lead}</h4><div class="en">${en}</div>${bars}<p>${state==='unk'?msg:tr}</p>${qw}`;
+    card.querySelector('.body').innerHTML=`<h4>${s.title||('النقطة '+s.label)}: ${lead}</h4><div class="en">${en}</div>${bars}<p>${state==='unk'?msg:(tier==='maybe'?'النتيجة محتملة فقط. أعد التصوير من قريب، وأكّدها عند مختص قبل أي معالجة.':tr)}</p>${qw}`;
     if(s.zone) setMk(s.zone,state);
     gmapUpdate(spots.indexOf(s));
   }
-  const n=sick+healthy+unk;
+  const n=sick+healthy+unk+maybeN;
   if(n){
-    $('summary').textContent=(sick?`رُصدت إصابة في ${sick} من ${n} نقاط فحص.`:healthy?`لا إصابات مؤكدة في ${n} نقاط فحص.`:'لم يتأكد النموذج من أي نقطة.')+((unk&&(sick||healthy))?` (${unk} غير مؤكدة)`:'');
+    $('summary').textContent=(sick?`رُصدت إصابة في ${sick} من ${n} نقاط فحص.`:healthy?`لا إصابات مؤكدة في ${n} نقاط فحص.`:'لم تتأكد أي نقطة.')+((unk&&(sick||healthy))?` (${unk} غير مؤكدة)`:'')+(maybeN?` (${maybeN} نتيجة محتملة تحتاج تأكيداً)`:'');
     $('bReport').hidden=false;
   }
   window._lastRun={tel:window._lastTel,spots,field:(opts&&opts.fieldCtx)||null};
@@ -964,8 +966,9 @@ function makeReport(){
   const t=r.tel||{}, f=r.field, sp=r.spots, v=(x,u)=>x==null?'—':esc(x)+u;
   const sick=sp.filter(s=>s.res&&s.res.state==='sick'), ok=sp.filter(s=>s.res&&s.res.state==='ok');
   const date=new Date().toLocaleDateString('ar-DZ',{dateStyle:'long'});
-  const advice=[...new Set(sick.map(s=>s.res.en))].map(e=>`<li><b>${esc(AR[e]||e)}:</b> ${esc(TREAT[e]||'')}</li>`).join('');
-  const cards=sp.map(s=>{ const q=s.res||{}, cf=q.conf==null?'':Math.round(q.conf*100)+'%'; return `<div class="c"><img src="${s.dataUrl}" alt=""><div class="b"><h4>${esc(s.title||('النقطة '+s.label))}: ${esc(q.name||'غير مؤكد')}</h4><div class="en">${esc(q.en||'')}</div><span class="bd ${q.state||'unk'}">${cf?('الثقة '+cf):'بلا نتيجة'}</span>${s.lat!=null?`<div class="en" style="margin-top:6px">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</div>`:''}</div></div>`; }).join('');
+  const sureSick=sick.filter(s=>s.res.tier!=='maybe'), maySick=sick.filter(s=>s.res.tier==='maybe');
+  const advice=[...new Set(sureSick.map(s=>s.res.en))].map(e=>`<li><b>${esc(AR[e]||e)}:</b> إن أكّد المختص الإصابة، فالخيار المطروح: ${esc(TREAT[e]||'')}</li>`).join('')+[...new Set(maySick.map(s=>s.res.en))].map(e=>`<li><b>${esc(AR[e]||e)} (محتمل فقط):</b> لا توصية علاج قبل التأكيد. أعد التصوير واستشر مختصاً.</li>`).join('');
+  const cards=sp.map(s=>{ const q=s.res||{}, cf=q.conf==null?'':Math.round(q.conf*100)+'%'; return `<div class="c"><img src="${s.dataUrl}" alt=""><div class="b"><h4>${esc(s.title||('النقطة '+s.label))}: ${esc((q.tier==='maybe'&&q.state!=='unk'?'محتمل: ':'')+(q.name||'غير مؤكد'))}</h4><div class="en">${esc(q.en||'')}</div><span class="bd ${q.state||'unk'}">${cf?('الثقة '+cf):'بلا نتيجة'}</span>${s.lat!=null?`<div class="en" style="margin-top:6px">${(+s.lat).toFixed(5)}, ${(+s.lng).toFixed(5)}</div>`:''}</div></div>`; }).join('');
   const html=`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير فحص الحقل</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
 <style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:'IBM Plex Sans Arabic',Tahoma,Arial,sans-serif;color:#1d2314;font-size:13px;line-height:1.7;margin:0}
@@ -980,7 +983,7 @@ ul{margin:4px 0;padding-inline-start:20px}.note{margin-top:18px;padding:8px 12px
 <b>الحقل</b><span>${esc((f&&f.name)||'غير محدد')}</span><b>المساحة</b><span>${f?esc(f.area_ha)+' هكتار':'—'}</span><b>الموقع</b><span style="direction:ltr;text-align:right">${f&&f.center?f.center[0].toFixed(4)+', '+f.center[1].toFixed(4):'—'}</span>
 <b>الحرارة</b><span>${v(t.temperature,'°م')}</span><b>الرطوبة</b><span>${v(t.humidity,'%')}</span><b>الرياح</b><span>${v(t.wind_kph&&+(+t.wind_kph).toFixed(1),' كم/س')}</span><b>الحالة الجوية</b><span>${esc(t.condition||'—')}</span></div>${sketchSVG(f,sp)}</div>
 <h2>الخلاصة</h2><p>فُحصت ${sp.length} نقاط: ${ok.length} سليمة، ${sick.length} مصابة${sp.length-ok.length-sick.length?`، ${sp.length-ok.length-sick.length} غير مؤكدة`:''}.</p>
-${advice?`<h2>التوصيات</h2><ul>${advice}</ul>`:''}<h2>نتائج النقاط</h2><div class="grid">${cards}</div>
+${advice?`<h2>التوصيات</h2><div class="note" style="background:#fbe9e3;color:#8a2f1a;margin:0 0 8px"><b>⚠ لا تُرشّ ولا تعالج قبل تأكيد الإصابة من مهندس زراعي.</b></div><ul>${advice}</ul>`:''}<h2>نتائج النقاط</h2><div class="grid">${cards}</div>
 <div class="note">هذه نتيجة آلية استرشادية مبنية على صور العيّنات فقط، وقد تخطئ. راجع مهندساً زراعياً قبل أي معالجة أو رشّ.</div><footer>أُنشئ بواسطة WheatField · WheatGuard</footer></body></html>`;
   const w=window.open('','_blank'); if(!w){ toast('اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.'); return; }
   w.document.open(); w.document.write(html); w.document.close();
