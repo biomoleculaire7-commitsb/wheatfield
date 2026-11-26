@@ -147,7 +147,7 @@ dialog .field-in{margin-bottom:10px}
 #gmapWrap{margin-bottom:6px}
 .card{cursor:pointer}
 .card.hl{outline:2px solid var(--wheat);outline-offset:2px}
-body.simple #nb-hist,body.simple #nb-live,body.simple #nb-eval,body.simple #tab-guard .bar:nth-of-type(n+2),body.simple #tel,body.simple #tab-field .stats,body.simple .card .en,body.simple .tech{display:none!important}
+body.simple #nb-hist,body.simple #nb-live,body.simple #nb-eval,body.simple #nb-guard,body.simple #mBar,body.simple #pBar,body.simple #gmapWrap,body.simple #risk,body.simple #tel,body.simple #tab-field .stats,body.simple .card .en,body.simple .tech{display:none!important}
 body.simple .btn{font-size:1.1em;padding:14px 16px}
 .pbar{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:.95em}.pbar .t{min-width:78px}.pbar .b{flex:1;height:10px;border-radius:6px;background:rgba(128,128,128,.25);overflow:hidden}.pbar .b i{display:block;height:100%;background:#d4603f}.pbar.ok .b i{background:#7fbf45}.pbar b{min-width:38px;text-align:left}
 .disc{margin:12px 0;font-size:.9em;opacity:.8;text-align:center}
@@ -219,7 +219,7 @@ body.simple .btn{font-size:1.1em;padding:14px 16px}
     </div>
 
     <div class="step">
-      <h3><b>3</b>أرسل درون WheatField</h3>
+      <h3 id="h3Send"><b>3</b>أرسل درون WheatField</h3>
       <div class="stats">
         <div class="stat"><span>الارتفاع</span><b id="sAlt">0 م</b></div>
         <div class="stat"><span>البطارية</span><b id="sBat">100%</b></div>
@@ -228,6 +228,7 @@ body.simple .btn{font-size:1.1em;padding:14px 16px}
       <button class="btn main" id="bLaunch" onclick="launch()" disabled>أطلق الدرون وأرسل الصور إلى WheatGuard</button>
       <div class="log" id="log"><div>ارسم حقلك على الخريطة للبدء.</div></div>
     </div>
+    <div id="simpleRes"></div>
   </aside>
 </div>
 </div>
@@ -235,18 +236,18 @@ body.simple .btn{font-size:1.1em;padding:14px 16px}
 <!-- ============ كشف الأمراض ============ -->
 <div id="tab-guard" class="tab">
 <div class="wrap">
-  <div class="bar">
+  <div class="bar" id="qBar">
     <div class="grow"><strong>فحص سريع بصورة واحدة</strong><small>صوّر ورقة أو سنبلة وسنحلّلها فوراً، دون رسم حقل أو إطلاق الدرون.</small></div>
     <label class="btn">التقط بالكاميرا<input type="file" accept="image/*" capture="environment" hidden onchange="quickScan(this)"></label>
     <label class="btn">اختر صورة<input type="file" accept="image/*" hidden onchange="quickScan(this)"></label>
   </div>
-  <div class="bar">
+  <div class="bar" id="mBar">
     <span class="dot" id="mDot"></span>
     <div class="grow"><strong id="mTxt">النموذج غير محمّل</strong><small id="mSub">wheat-disease.tflite</small></div>
     <label class="btn">اختر ملف النموذج<input type="file" accept=".tflite,.onnx" id="mFile" hidden></label>
     <button class="btn" id="mReset" hidden onclick="clearUserModel()">العودة لنموذج الخادم</button>
   </div>
-  <div class="bar">
+  <div class="bar" id="pBar">
     <div class="grow"><strong id="srcTxt">لا توجد بيانات بعد</strong><small>تصل الصور والقياسات من الدرون، أو اسحبها من الخادم.</small></div>
     <button class="btn" onclick="pullServer(true)">استقبل من الخادم</button>
     <label class="row" style="gap:6px"><input type="checkbox" id="poll" onchange="togglePoll()"> تحديث تلقائي كل 5 ثوانٍ</label>
@@ -447,8 +448,10 @@ function inside(pt,p){
     if(((yi>pt[0])!==(yj>pt[0]))&&(pt[1]<(xj-xi)*(pt[0]-yi)/(yj-yi)+xi)) c=!c;
   } return c;
 }
-function genZones(){
-  if(!field) return; clearZones();
+async function genZones(){
+  if(!field) return;
+  if(SIMPLE&&!ndviGrid){ const bt=$('bGen'); if(bt){ bt.disabled=true; } try{ await ndviRun(); }catch(e){} if(bt) bt.disabled=false; }
+  clearZones();
   const n=+$('nZones').value, la=field.poly.map(p=>p[0]), lo=field.poly.map(p=>p[1]);
   const [a,b,c,d]=[Math.min(...la),Math.max(...la),Math.min(...lo),Math.max(...lo)], K=7, cand=[];
   for(let i=0;i<K;i++)for(let j=0;j<K;j++){ const p=[a+(b-a)*(i+.5)/K, c+(d-c)*(j+.5)/K]; if(inside(p,field.poly)) cand.push(p); }
@@ -529,9 +532,9 @@ async function launch(){
   const ready=zones.filter(z=>z.blob); if(!field||!ready.length) return;
   field.name=$('fname').value.trim()||field.name||'حقلي';
   $('bLaunch').disabled=true; let bat=100, alt=0;
-  droneMk=L.marker(field.poly[0],{icon:L.divIcon({className:'',html:'<div class="drone">🛸</div>',iconSize:[0,0]}),zIndexOffset:1000}).addTo(map);
-  log('أقلعت الدرون.','hi'); let pos=field.poly[0]; alt=25; $('sAlt').textContent=alt+' م';
-  for(let i=0;i<ready.length;i++){
+  if(!SIMPLE) droneMk=L.marker(field.poly[0],{icon:L.divIcon({className:'',html:'<div class="drone">🛸</div>',iconSize:[0,0]}),zIndexOffset:1000}).addTo(map);
+  log(SIMPLE?'جارٍ تحليل الصور…':'أقلعت الدرون.','hi'); let pos=field.poly[0]; alt=SIMPLE?0:25; $('sAlt').textContent=alt+' م';
+  for(let i=0;i<ready.length&&!SIMPLE;i++){
     const z=ready[i]; await tween(pos,[z.lat,z.lng],1700,(a,b)=>droneMk.setLatLng([a,b])); pos=[z.lat,z.lng];
     log(`التُقطت عيّنة النقطة ${z.label}.`,'ok'); bat-=Math.round(8+Math.random()*4); $('sBat').textContent=bat+'%'; $('sCov').textContent=Math.round((i+1)/ready.length*100)+'%'; await sleep(450);
   }
@@ -541,9 +544,9 @@ async function launch(){
   if(!tel){ try{ tel=await openMeteo(field.center[0],field.center[1]); }catch{ tel={temperature:null,humidity:null,wind_kph:null,condition:'غير متاح',gps:{lat:field.center[0],lon:field.center[1]}}; } }
   tel.altitude=alt; tel.zone=tel.zone||field.name;
   const spots=ready.map(z=>({label:z.label,lat:z.lat,lng:z.lng,dataUrl:z.dataUrl,zone:z}));
-  log('عادت الدرون. يبدأ WheatGuard الكشف الآن.','ok'); $('bLaunch').disabled=false;
+  log(SIMPLE?'يبدأ الكشف الآن.':'عادت الدرون. يبدأ WheatGuard الكشف الآن.','ok'); $('bLaunch').disabled=false;
   const fctx={name:field.name,poly:field.poly,area_ha:field.area_ha,center:field.center};
-  showTab('guard'); renderGuard(tel,spots,'من رحلة الدرون الحالية'); analyzeAll(spots,{save:true,tel,fieldCtx:fctx});
+  if(!SIMPLE) showTab('guard'); renderGuard(tel,spots,'من رحلة الدرون الحالية'); const pr=analyzeAll(spots,{save:true,tel,fieldCtx:fctx}); if(SIMPLE) setTimeout(()=>{ try{ $('simpleRes').scrollIntoView({behavior:'smooth'}); }catch(e){} },300); await pr;
 }
 
 /* ============== النموذج (TFLite أو ONNX داخل المتصفح) ============== */
@@ -684,7 +687,15 @@ function renderGuard(t,spots,from){
 /* ============== وضع الفلاح وجودة الصورة ============== */
 const CONF_SURE=0.5;
 let SIMPLE=false;
-function setMode(v){ SIMPLE=v; document.body.classList.toggle('simple',v); const b=$('modeBtn'); if(b) b.textContent=v?'وضع المختص':'وضع الفلاح'; const l=$('bLaunch'); if(l) l.textContent=v?'حلّل الصور':'أطلق الدرون وأرسل الصور إلى WheatGuard'; try{ localStorage.setItem('wgSimple',v?'1':'0'); }catch(e){} if(v&&['hist','live','eval'].some(t=>$('tab-'+t).classList.contains('on'))) showTab('field'); }
+function setMode(v){ SIMPLE=v; document.body.classList.toggle('simple',v); const b=$('modeBtn'); if(b) b.textContent=v?'وضع المختص':'وضع الفلاح';
+  const l=$('bLaunch'); if(l) l.textContent=v?'حلّل الصور':'أطلق الدرون وأرسل الصور إلى WheatGuard';
+  const h=$('h3Send'); if(h) h.innerHTML=v?'<b>3</b>حلّل الصور':'<b>3</b>أرسل درون WheatField';
+  const nf=$('nb-field'); if(nf) nf.textContent=v?'حقلي':'WheatField · الدرون';
+  const g=document.querySelector('#tab-guard .wrap'), sr=$('simpleRes');
+  if(sr&&g){ const els=[$('qBar'),$('summary'),$('bReport'),$('cards'),document.querySelector('.disc')].filter(Boolean);
+    if(v) els.forEach(e=>sr.appendChild(e)); else els.forEach(e=>g.appendChild(e)); }
+  try{ localStorage.setItem('wgSimple',v?'1':'0'); }catch(e){}
+  if(v&&['guard','hist','live','eval'].some(t=>$('tab-'+t).classList.contains('on'))) showTab('field'); }
 function toggleMode(){ setMode(!SIMPLE); }
 function imgQuality(src){
   const c=document.createElement('canvas'), k=256/Math.max(src.naturalWidth||src.width,src.naturalHeight||src.height,1); c.width=Math.max(8,Math.round((src.naturalWidth||src.width)*k)); c.height=Math.max(8,Math.round((src.naturalHeight||src.height)*k));
