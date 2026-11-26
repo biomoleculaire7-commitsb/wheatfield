@@ -982,7 +982,7 @@ ul{margin:4px 0;padding-inline-start:20px}.note{margin-top:18px;padding:8px 12px
 <h2>الحقل والظروف</h2><div class="row"><div class="kv">
 <b>الحقل</b><span>${esc((f&&f.name)||'غير محدد')}</span><b>المساحة</b><span>${f?esc(f.area_ha)+' هكتار':'—'}</span><b>الموقع</b><span style="direction:ltr;text-align:right">${f&&f.center?f.center[0].toFixed(4)+', '+f.center[1].toFixed(4):'—'}</span>
 <b>الحرارة</b><span>${v(t.temperature,'°م')}</span><b>الرطوبة</b><span>${v(t.humidity,'%')}</span><b>الرياح</b><span>${v(t.wind_kph&&+(+t.wind_kph).toFixed(1),' كم/س')}</span><b>الحالة الجوية</b><span>${esc(t.condition||'—')}</span></div>${sketchSVG(f,sp)}</div>
-<h2>الخلاصة</h2><p>فُحصت ${sp.length} نقاط: ${ok.length} سليمة، ${sick.length} مصابة${sp.length-ok.length-sick.length?`، ${sp.length-ok.length-sick.length} غير مؤكدة`:''}.</p>
+<h2>الخلاصة</h2><p>${(()=>{ const mb=sp.filter(x=>x.res&&x.res.state!=='unk'&&x.res.tier==='maybe').length, okS=ok.filter(x=>x.res.tier!=='maybe').length, unk=sp.length-ok.length-sick.length; return `فُحصت ${sp.length} نقاط: ${okS} سليمة مؤكدة، ${sureSick.length} مصابة مرجّحة${mb?`، ${mb} محتملة تحتاج تأكيداً`:''}${unk?`، ${unk} غير مؤكدة`:''}.`; })()}</p>
 ${advice?`<h2>التوصيات</h2><div class="note" style="background:#fbe9e3;color:#8a2f1a;margin:0 0 8px"><b>⚠ لا تُرشّ ولا تعالج قبل تأكيد الإصابة من مهندس زراعي.</b></div><ul>${advice}</ul>`:''}<h2>نتائج النقاط</h2><div class="grid">${cards}</div>
 <div class="note">هذه نتيجة آلية استرشادية مبنية على صور العيّنات فقط، وقد تخطئ. راجع مهندساً زراعياً قبل أي معالجة أو رشّ.</div><footer>أُنشئ بواسطة WheatField · WheatGuard</footer></body></html>`;
   const w=window.open('','_blank'); if(!w){ toast('اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.'); return; }
