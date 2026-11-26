@@ -747,7 +747,7 @@ async function analyzeAll(spots,opts){
     const lead=state==='unk'?'غير مؤكد':(tier==='maybe'?'محتمل: '+(state==='sick'?name:'سليمة')+' (يحتاج تأكيداً)':(state==='sick'?'الأرجح: '+name:'تبدو سليمة'));
     const qw=(qm&&!qm.bad)?`<p style="color:#d4603f">${qm.msg}</p>`:'';
     card.querySelector('.body').innerHTML=`<h4>${s.title||('النقطة '+s.label)}: ${lead}</h4><div class="en">${en}</div>${bars}<p>${state==='unk'?msg:(tier==='maybe'?'النتيجة محتملة فقط. أعد التصوير من قريب، وأكّدها عند مختص قبل أي معالجة.':tr)}</p>${qw}`;
-    if(s.zone) setMk(s.zone,state);
+    if(s.zone) setMk(s.zone,tier==='maybe'?'unk':state);
     gmapUpdate(spots.indexOf(s));
   }
   const n=sick+healthy+unk+maybeN;
@@ -958,7 +958,7 @@ function sketchSVG(f,spots){
   const xe=Math.max((d-c)*cs,1e-9), ye=Math.max(b-a,1e-9), k=Math.min((W-2*pad)/xe,(H-2*pad)/ye), ox=(W-xe*k)/2, oy=(H-ye*k)/2;
   const X=g=>ox+(g-c)*cs*k, Y=t=>H-oy-(t-a)*k, col={ok:'#3f7d1c',sick:'#c0452b',unk:'#b8860b'};
   const pts=f.poly.map(p=>X(p[1]).toFixed(1)+','+Y(p[0]).toFixed(1)).join(' ');
-  const dots=spots.filter(s=>s.lat!=null&&s.lng!=null).map(s=>{ const st=(s.res&&s.res.state)||'unk'; return `<circle cx="${X(s.lng).toFixed(1)}" cy="${Y(s.lat).toFixed(1)}" r="9" fill="${col[st]}" stroke="#fff" stroke-width="1.5"/><text x="${X(s.lng).toFixed(1)}" y="${(Y(s.lat)+4).toFixed(1)}" text-anchor="middle" font-size="11" fill="#fff" font-weight="700">${esc(s.label)}</text>`; }).join('');
+  const dots=spots.filter(s=>s.lat!=null&&s.lng!=null).map(s=>{ const st=(s.res&&s.res.tier!=='maybe'&&s.res.state)||'unk'; return `<circle cx="${X(s.lng).toFixed(1)}" cy="${Y(s.lat).toFixed(1)}" r="9" fill="${col[st]}" stroke="#fff" stroke-width="1.5"/><text x="${X(s.lng).toFixed(1)}" y="${(Y(s.lat)+4).toFixed(1)}" text-anchor="middle" font-size="11" fill="#fff" font-weight="700">${esc(s.label)}</text>`; }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg"><rect width="${W}" height="${H}" fill="#f4f6ee" rx="8"/><polygon points="${pts}" fill="rgba(127,191,69,.25)" stroke="#6b7f3a" stroke-width="2"/>${dots}</svg>`;
 }
 function makeReport(){
